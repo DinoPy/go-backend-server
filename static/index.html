@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>Go WebSocket Client</title>
+</head>
+
+<body>
+	<h1>WebSocket Client</h1>
+	<button onclick="sendTaskbarUpdate()">Send Taskbar Update</button>
+	<ul id="messages"></ul>
+
+	<script>
+		let socket;
+		connect();
+
+		function connect() {
+			socket = new WebSocket('ws://localhost:8080/ws/taskbar');
+
+			socket.onopen = () => {
+				console.log('Connected');
+				sendEvent("connect", {
+					id: "28c07fc5-2732-47c0-b305-92982fbddcef",
+					email: "001test.alex@gmail.com",
+					first_name: "Alex",
+					last_name: "Test",
+				})
+			};
+
+			socket.onmessage = (event) => {
+				const msg = JSON.parse(event.data);
+				console.log('Received:', msg);
+
+				if (msg.event === "ping") {
+					sendEvent("pong", "alive and well");
+				}
+
+				const li = document.createElement('li');
+				li.textContent = `[${msg.event}] ${JSON.stringify(msg.data)}`;
+				document.getElementById('messages').appendChild(li);
+			};
+
+			socket.onclose = (e) => {
+				console.log('Socket closed, retrying in 3s...', e.reason);
+				setTimeout(connect, 3000); // auto-reconnect after 3s
+			};
+
+			socket.onerror = (err) => {
+				console.error('Socket error:', err);
+			};
+		}
+
+		function sendEvent(eventName, data) {
+			socket.send(JSON.stringify({event: eventName, data: data}));
+		}
+
+		function sendTaskbarUpdate() {
+			sendEvent("taskbar-update", {time: Date.now()});
+		}
+	</script>
+</body>
+
+</html>
