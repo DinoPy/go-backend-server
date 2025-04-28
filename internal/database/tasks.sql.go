@@ -17,8 +17,8 @@ import (
 const completeTask = `-- name: CompleteTask :one
 UPDATE tasks
 SET
-	is_active = 0,
-	is_completed = 1,
+	is_active = FALSE,
+	is_completed = TRUE,
 	duration = $2,
 	completed_at = $3,
 	last_modified_at = $4
@@ -30,7 +30,7 @@ type CompleteTaskParams struct {
 	ID             uuid.UUID    `json:"id"`
 	Duration       string       `json:"duration"`
 	CompletedAt    sql.NullTime `json:"completed_at"`
-	LastModifiedAt int32        `json:"last_modified_at"`
+	LastModifiedAt int64        `json:"last_modified_at"`
 }
 
 func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (Task, error) {
@@ -100,11 +100,11 @@ type CreateTaskParams struct {
 	Duration       string         `json:"duration"`
 	Category       string         `json:"category"`
 	Tags           sql.NullString `json:"tags"`
-	ToggledAt      sql.NullInt32  `json:"toggled_at"`
-	IsActive       int32          `json:"is_active"`
-	IsCompleted    int32          `json:"is_completed"`
+	ToggledAt      sql.NullInt64  `json:"toggled_at"`
+	IsActive       bool           `json:"is_active"`
+	IsCompleted    bool           `json:"is_completed"`
 	UserID         uuid.UUID      `json:"user_id"`
-	LastModifiedAt int32          `json:"last_modified_at"`
+	LastModifiedAt int64          `json:"last_modified_at"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -170,7 +170,7 @@ type EditTaskParams struct {
 	Description    string         `json:"description"`
 	Category       string         `json:"category"`
 	Tags           sql.NullString `json:"tags"`
-	LastModifiedAt int32          `json:"last_modified_at"`
+	LastModifiedAt int64          `json:"last_modified_at"`
 }
 
 func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error) {
@@ -204,7 +204,7 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error
 const getActiveTaskByUUID = `-- name: GetActiveTaskByUUID :many
 SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at 
 FROM tasks
-WHERE user_id = $1 AND is_completed = 0
+WHERE user_id = $1 AND is_completed = FALSE
 `
 
 func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]Task, error) {
@@ -248,7 +248,7 @@ const getCompletedTasksByUUID = `-- name: GetCompletedTasksByUUID :many
 SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at 
 FROM tasks
 WHERE user_id = $1
-	AND is_completed = 1
+	AND is_completed = TRUE
 	AND completed_at >= $2
 	AND completed_at <= $3
 	AND (
@@ -323,7 +323,7 @@ func (q *Queries) GetCompletedTasksByUUID(ctx context.Context, arg GetCompletedT
 const getNonCompletedTasks = `-- name: GetNonCompletedTasks :many
 SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
 FROM TASKS
-WHERE is_completed = 0
+WHERE is_completed = TRUE
 ORDER BY user_id
 `
 
@@ -419,10 +419,10 @@ RETURNING id, title, description, created_at, completed_at, duration, category, 
 
 type ToggleTaskParams struct {
 	ID             uuid.UUID     `json:"id"`
-	IsActive       int32         `json:"is_active"`
-	ToggledAt      sql.NullInt32 `json:"toggled_at"`
+	IsActive       bool          `json:"is_active"`
+	ToggledAt      sql.NullInt64 `json:"toggled_at"`
 	Duration       string        `json:"duration"`
-	LastModifiedAt int32         `json:"last_modified_at"`
+	LastModifiedAt int64         `json:"last_modified_at"`
 }
 
 func (q *Queries) ToggleTask(ctx context.Context, arg ToggleTaskParams) (Task, error) {

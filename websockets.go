@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/dinopy/taskbar2_server/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -28,7 +29,7 @@ type User struct {
 type Client struct {
 	SID  uuid.UUID
 	Conn *websocket.Conn
-	User User
+	User database.User
 }
 
 type ClientManager struct {
@@ -178,6 +179,28 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				fmt.Println("Error occured in onConnect function:", err)
 				return
+			}
+		case "task_create":
+			err := cfg.WSOnTaskCreate(ctx, c, SID, data)
+			if err != nil {
+				fmt.Println("Error occured in onTaskCreate function:", err)
+				return
+			}
+		case "task_toggle":
+			err := cfg.WSOnTaskToggle(ctx, c, SID, data)
+			if err != nil {
+				fmt.Println("Error occured in onTaskToggle function:", err)
+				return
+			}
+		case "task_edit":
+			err := cfg.WSOnTaskEdit(ctx, c, SID, data)
+			if err != nil {
+				fmt.Println("Error occured in onTaskEdit function: ", err)
+			}
+		case "task_delete":
+			err := cfg.WSOnTaskDelete(ctx, c, SID, data)
+			if err != nil {
+				fmt.Println("Error occured in onTaskDelete function: ", err)
 			}
 		case "taskbar-update":
 			cfg.WSClientManager.BroadcastToSameUser(ctx, "taskbar-ack", cfg.WSClientManager.clients[SID].User.ID, "From "+SID.String())

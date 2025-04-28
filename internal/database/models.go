@@ -20,11 +20,11 @@ type Task struct {
 	Duration       string         `json:"duration"`
 	Category       string         `json:"category"`
 	Tags           sql.NullString `json:"tags"`
-	ToggledAt      sql.NullInt32  `json:"toggled_at"`
-	IsActive       int32          `json:"is_active"`
-	IsCompleted    int32          `json:"is_completed"`
+	ToggledAt      sql.NullInt64  `json:"toggled_at"`
+	IsActive       bool           `json:"is_active"`
+	IsCompleted    bool           `json:"is_completed"`
 	UserID         uuid.UUID      `json:"user_id"`
-	LastModifiedAt int32          `json:"last_modified_at"`
+	LastModifiedAt int64          `json:"last_modified_at"`
 }
 
 type User struct {

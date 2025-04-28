@@ -4,14 +4,14 @@ SELECT * FROM TASKS;
 -- name: GetNonCompletedTasks :many
 SELECT *
 FROM TASKS
-WHERE is_completed = 0
+WHERE is_completed = TRUE
 ORDER BY user_id;
 
 -- name: GetCompletedTasksByUUID :many
 SELECT * 
 FROM tasks
 WHERE user_id = $1
-	AND is_completed = 1
+	AND is_completed = TRUE
 	AND completed_at >= $2
 	AND completed_at <= $3
 	AND (
@@ -32,7 +32,7 @@ WHERE user_id = $1
 -- name: GetActiveTaskByUUID :many
 SELECT * 
 FROM tasks
-WHERE user_id = $1 AND is_completed = 0;
+WHERE user_id = $1 AND is_completed = FALSE;
 
 -- name: CreateTask :one
 INSERT INTO tasks (
@@ -79,8 +79,8 @@ RETURNING *;
 -- name: CompleteTask :one
 UPDATE tasks
 SET
-	is_active = 0,
-	is_completed = 1,
+	is_active = FALSE,
+	is_completed = TRUE,
 	duration = $2,
 	completed_at = $3,
 	last_modified_at = $4

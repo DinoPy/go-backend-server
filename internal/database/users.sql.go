@@ -14,15 +14,13 @@ import (
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-	id,
 	first_name,
 	last_name,
 	email
 ) VALUES (
 	$1,
 	$2,
-	$3,
-	$4
+	$3
 )
 ON CONFLICT (email)
 DO UPDATE SET id = users.id
@@ -30,19 +28,13 @@ RETURNING id, first_name, last_name, email, created_at, updated_at, categories, 
 `
 
 type CreateUserParams struct {
-	ID        uuid.UUID `json:"id"`
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Email     string    `json:"email"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser,
-		arg.ID,
-		arg.FirstName,
-		arg.LastName,
-		arg.Email,
-	)
+	row := q.db.QueryRowContext(ctx, createUser, arg.FirstName, arg.LastName, arg.Email)
 	var i User
 	err := row.Scan(
 		&i.ID,

@@ -1,14 +1,12 @@
 -- name: CreateUser :one
 INSERT INTO users (
-	id,
 	first_name,
 	last_name,
 	email
 ) VALUES (
 	$1,
 	$2,
-	$3,
-	$4
+	$3
 )
 ON CONFLICT (email)
 DO UPDATE SET id = users.id
