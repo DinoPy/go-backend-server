@@ -75,6 +75,16 @@ func (m *ClientManager) BroadcastToSameUser(ctx context.Context, event string, U
 	}
 }
 
+func (m *ClientManager) BroadcastToSameUserNoIssuer(ctx context.Context, event string, UID uuid.UUID, SID uuid.UUID, data interface{}) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, client := range m.clients {
+		if client.User.ID == UID && client.SID != SID {
+			sendEvent(ctx, client.Conn, event, data)
+		}
+	}
+}
+
 func (m *ClientManager) SendToClient(ctx context.Context, event string, SID uuid.UUID, data interface{}) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -105,7 +115,6 @@ func (cfg config) wsPing(ctx context.Context, c *websocket.Conn, pongCh chan str
 	for {
 		select {
 		case <-ticker.C:
-			log.Println("Sending ping to client...")
 			err := sendEvent(ctx, c, "ping", "")
 			if err != nil {
 				log.Println("Failed to sendping:", err)
@@ -115,7 +124,6 @@ func (cfg config) wsPing(ctx context.Context, c *websocket.Conn, pongCh chan str
 
 			select {
 			case <-pongCh:
-				log.Println("Pong received!")
 			case <-time.After(cfg.WSCfg.pingTimeout):
 				log.Println("No pong received, closing connection")
 				c.Close(websocket.StatusNormalClosure, "no pong response")
@@ -168,6 +176,10 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		if msg.Event != "pong" {
+			log.Println("Received", msg.Event, "from", SID.String())
+		}
+
 		switch msg.Event {
 		case "pong":
 			select {
@@ -177,30 +189,60 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 		case "connect":
 			err := cfg.WSOnConnect(ctx, c, SID, data)
 			if err != nil {
-				fmt.Println("Error occured in onConnect function:", err)
+				log.Println("Error occured in onConnect function:", err)
 				return
 			}
 		case "task_create":
 			err := cfg.WSOnTaskCreate(ctx, c, SID, data)
 			if err != nil {
-				fmt.Println("Error occured in onTaskCreate function:", err)
+				log.Println("Error occured in onTaskCreate function:", err)
 				return
 			}
 		case "task_toggle":
 			err := cfg.WSOnTaskToggle(ctx, c, SID, data)
 			if err != nil {
-				fmt.Println("Error occured in onTaskToggle function:", err)
+				log.Println("Error occured in onTaskToggle function:", err)
 				return
 			}
 		case "task_edit":
 			err := cfg.WSOnTaskEdit(ctx, c, SID, data)
 			if err != nil {
-				fmt.Println("Error occured in onTaskEdit function: ", err)
+				log.Println("Error occured in onTaskEdit function: ", err)
+			}
+		case "task_completed":
+			err := cfg.WSOnTaskCompleted(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in onTaskComplete function: ", err)
 			}
 		case "task_delete":
 			err := cfg.WSOnTaskDelete(ctx, c, SID, data)
 			if err != nil {
-				fmt.Println("Error occured in onTaskDelete function: ", err)
+				log.Println("Error occured in onTaskDelete function: ", err)
+			}
+		case "get_completed_tasks":
+			err := cfg.WSOnGetCompletedTasks(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in OnGetCompletedTasks function: ", err)
+			}
+		case "request_hard_refresh":
+			err := cfg.WSOnRequestHardRefresh(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in OnRequestHardRefresh function: ", err)
+			}
+		case "user_updated_categories":
+			err := cfg.WSOnUserUpdatedCategories(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in OnUserUpdatedCategories function: ", err)
+			}
+		case "new_command_added":
+			err := cfg.WSOnNewCommandAdded(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in OnNewCommandAdded function: ", err)
+			}
+		case "command_removed":
+			err := cfg.WSOnNewCommandAdded(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occured in OnNewCommandAdded function: ", err)
 			}
 		case "taskbar-update":
 			cfg.WSClientManager.BroadcastToSameUser(ctx, "taskbar-ack", cfg.WSClientManager.clients[SID].User.ID, "From "+SID.String())

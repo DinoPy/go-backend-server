@@ -12,19 +12,19 @@ import (
 )
 
 type Task struct {
-	ID             uuid.UUID      `json:"id"`
-	Title          string         `json:"title"`
-	Description    string         `json:"description"`
-	CreatedAt      time.Time      `json:"created_at"`
-	CompletedAt    sql.NullTime   `json:"completed_at"`
-	Duration       string         `json:"duration"`
-	Category       string         `json:"category"`
-	Tags           sql.NullString `json:"tags"`
-	ToggledAt      sql.NullInt64  `json:"toggled_at"`
-	IsActive       bool           `json:"is_active"`
-	IsCompleted    bool           `json:"is_completed"`
-	UserID         uuid.UUID      `json:"user_id"`
-	LastModifiedAt int64          `json:"last_modified_at"`
+	ID             uuid.UUID     `json:"id"`
+	Title          string        `json:"title"`
+	Description    string        `json:"description"`
+	CreatedAt      time.Time     `json:"created_at"`
+	CompletedAt    sql.NullTime  `json:"completed_at"`
+	Duration       string        `json:"duration"`
+	Category       string        `json:"category"`
+	Tags           []string      `json:"tags"`
+	ToggledAt      sql.NullInt64 `json:"toggled_at"`
+	IsActive       bool          `json:"is_active"`
+	IsCompleted    bool          `json:"is_completed"`
+	UserID         uuid.UUID     `json:"user_id"`
+	LastModifiedAt int64         `json:"last_modified_at"`
 }
 
 type User struct {

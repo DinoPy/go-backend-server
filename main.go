@@ -11,6 +11,7 @@ import (
 	"github.com/dinopy/taskbar2_server/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/robfig/cron/v3"
 )
 
 type config struct {
@@ -80,6 +81,11 @@ func main() {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
+
+	location, _ := time.LoadLocation("Europe/Bucharest")
+	cron := cron.New(cron.WithLocation(location))
+	cron.AddFunc("59 23 * * *", cfg.WSOnMidnightTaskRefresh)
+	cron.Start()
 
 	log.Println("Serving on http://localhost:" + cfg.PORT + "...")
 	log.Fatal(srv.ListenAndServe())

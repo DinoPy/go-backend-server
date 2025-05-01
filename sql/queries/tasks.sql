@@ -4,30 +4,35 @@ SELECT * FROM TASKS;
 -- name: GetNonCompletedTasks :many
 SELECT *
 FROM TASKS
-WHERE is_completed = TRUE
+WHERE is_completed = FALSE
 ORDER BY user_id;
 
 -- name: GetCompletedTasksByUUID :many
 SELECT * 
 FROM tasks
-WHERE user_id = $1
+WHERE user_id = @user_id
 	AND is_completed = TRUE
-	AND completed_at >= $2
-	AND completed_at <= $3
 	AND (
-		cardinality($4::text[]) = 0 OR
-		EXISTS (
-			SELECT 1 
-			FROM unnest(tags) AS t
-			WHERE t ILIKE ANY ($4)
+	  sqlc.narg(start_date)::timestamp IS NULL OR completed_at >= sqlc.narg(start_date)::timestamp
+	)
+	AND (
+	  sqlc.narg(end_date)::timestamp IS NULL OR completed_at <= sqlc.narg(end_date)::timestamp
+	)
+	AND (
+		cardinality(@tags::text[]) = 0
+		OR EXISTS (
+			SELECT 1
+			FROM unnest(@tags::text[]) AS tag_filter
+			WHERE tag_filter ILIKE ANY (tags)
 		)
 	)
-	AND (
-		$5 IS NULL OR title ILIKE $5
-	)
-	AND (
-		$6 IS NULL OR category = $6
-	);
+	  AND (
+		sqlc.narg(search_query)::text IS NULL OR title ILIKE sqlc.narg(search_query)::text
+	  )
+	  AND (
+		sqlc.narg(category)::text IS NULL OR category = sqlc.narg(category)::text
+	  )
+ORDER BY completed_at DESC;
 
 -- name: GetActiveTaskByUUID :many
 SELECT * 

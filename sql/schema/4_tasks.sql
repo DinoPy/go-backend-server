@@ -8,7 +8,7 @@ CREATE TABLE tasks (
 	completed_at TIMESTAMP,
 	duration 	 TEXT NOT NULL,
 	category     TEXT NOT NULL,
-	tags 		 TEXT,
+	tags 		 TEXT[],
 	toggled_at   BIGINT,
 	is_active    BOOLEAN NOT NULL,
 	is_completed BOOLEAN NOT NULL,
