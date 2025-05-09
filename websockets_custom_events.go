@@ -332,15 +332,21 @@ func (cfg *config) WSOnGetCompletedTasks(ctx context.Context, c *websocket.Conn,
 		}
 	}
 	if !connectionData.Data.EndDate.IsZero() {
+		endDateWithTime := time.Date(
+			connectionData.Data.EndDate.Year(),
+			connectionData.Data.EndDate.Month(),
+			connectionData.Data.EndDate.Day(),
+			23, 59, 59, 0, time.UTC,
+		)
 		queryFilters.EndDate = sql.NullTime{
 			Valid: true,
-			Time:  connectionData.Data.EndDate.In(time.UTC),
+			Time:  endDateWithTime,
 		}
 	} else {
 		now := time.Now()
 		endOfDay := time.Date(
 			now.Year(), now.Month(), now.Day(),
-			23, 59, 0, 0, time.UTC,
+			23, 59, 59, 0, time.UTC,
 		)
 		queryFilters.EndDate = sql.NullTime{
 			Valid: true,
@@ -544,7 +550,21 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 		if durationInt == 0 && task.ToggledAt.Int64 == 0 {
 			continue
 		}
-		duration := (durationInt + lastEpochMs - task.ToggledAt.Int64) / 1000
+
+		var currentSegmentDurationMs int64
+		if task.ToggledAt.Valid && task.ToggledAt.Int64 != 0 {
+			currentSegmentDurationMs = lastEpochMs - task.ToggledAt.Int64
+
+			if currentSegmentDurationMs < 0 {
+				log.Printf("Warning: task %s ToggledAt (%d) is in the future compared to current time (%d)",
+					task.ID, task.ToggledAt.Int64, lastEpochMs)
+				currentSegmentDurationMs = 0
+			}
+		} else {
+			currentSegmentDurationMs = 0
+		}
+
+		duration := (durationInt + currentSegmentDurationMs) / 1000
 		durationStr, err := durationIntToStr(duration)
 		if err != nil {
 			log.Println(err)
