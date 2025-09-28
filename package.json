@@ -1,0 +1,24 @@
+{
+  "name": "taskbar2_server",
+  "version": "1.0.0",
+  "description": "Made to replace the current python backend server due to absurd usage while idling.",
+  "main": "test_final.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DinoPy/go-backend-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/DinoPy/go-backend-server/issues"
+  },
+  "homepage": "https://github.com/DinoPy/go-backend-server#readme",
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

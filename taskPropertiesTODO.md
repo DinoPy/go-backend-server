@@ -351,7 +351,7 @@
 
 ### Task 8: Test WebSocket events
 - [x] Start server and verify it starts without errors ✅ COMPLETED
-- [ ] Test task creation with new properties:
+- [x] Test task creation with new properties: ✅ COMPLETED
   ```json
   {
     "event": "task_create",
@@ -374,7 +374,7 @@
     }
   }
   ```
-- [ ] Test task creation without new properties (backward compatibility):
+- [x] Test task creation without new properties (backward compatibility): ✅ COMPLETED
   ```json
   {
     "event": "task_create",
@@ -394,8 +394,8 @@
     }
   }
   ```
-- [ ] Test task editing with new properties
-- [ ] Verify tasks are returned with new properties
+- [x] Test task editing with new properties ✅ COMPLETED
+- [x] Verify tasks are returned with new properties ✅ COMPLETED
 
 ### Task 9: Verify frontend compatibility
 - [ ] Check that all existing functionality still works
