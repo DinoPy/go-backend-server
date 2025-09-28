@@ -201,17 +201,17 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 	}
 
 	task, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
-		ID:                connectionData.Data.ID,
-		Title:             connectionData.Data.Title,
-		Description:       connectionData.Data.Description,
-		CreatedAt:         connectionData.Data.CreatedAt,
+		ID:          connectionData.Data.ID,
+		Title:       connectionData.Data.Title,
+		Description: connectionData.Data.Description,
+		CreatedAt:   connectionData.Data.CreatedAt,
 		CompletedAt: sql.NullTime{
 			Valid: true,
 			Time:  connectionData.Data.CompletedAt,
 		},
-		Duration:          connectionData.Data.Duration,
-		Category:          connectionData.Data.Category,
-		Tags:              connectionData.Data.Tags,
+		Duration: connectionData.Data.Duration,
+		Category: connectionData.Data.Category,
+		Tags:     connectionData.Data.Tags,
 		ToggledAt: sql.NullInt64{
 			Int64: connectionData.Data.ToggledAt,
 			Valid: true,
@@ -358,13 +358,41 @@ func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid
 		return err
 	}
 
+	// Handle nullable fields
+	var priority sql.NullInt32
+	if connectionData.Data.Priority != nil {
+		priority = sql.NullInt32{
+			Int32: *connectionData.Data.Priority,
+			Valid: true,
+		}
+	}
+
+	var dueAt sql.NullTime
+	if connectionData.Data.DueAt != nil {
+		dueAt = sql.NullTime{
+			Time:  *connectionData.Data.DueAt,
+			Valid: true,
+		}
+	}
+
+	var showBeforeDueTime sql.NullInt32
+	if connectionData.Data.ShowBeforeDueTime != nil {
+		showBeforeDueTime = sql.NullInt32{
+			Int32: *connectionData.Data.ShowBeforeDueTime,
+			Valid: true,
+		}
+	}
+
 	task, err := cfg.DB.EditTaskWithTiming(ctx, database.EditTaskParams{
-		ID:             connectionData.Data.ID,
-		Title:          connectionData.Data.Title,
-		Description:    connectionData.Data.Description,
-		Category:       connectionData.Data.Category,
-		Tags:           connectionData.Data.Tags,
-		LastModifiedAt: connectionData.Data.LastModifiedAt,
+		ID:                connectionData.Data.ID,
+		Title:             connectionData.Data.Title,
+		Description:       connectionData.Data.Description,
+		Category:          connectionData.Data.Category,
+		Tags:              connectionData.Data.Tags,
+		LastModifiedAt:    connectionData.Data.LastModifiedAt,
+		Priority:          priority,
+		DueAt:             dueAt,
+		ShowBeforeDueTime: showBeforeDueTime,
 	})
 
 	cfg.WSClientManager.BroadcastToSameUserNoIssuer(

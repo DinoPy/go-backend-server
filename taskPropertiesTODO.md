@@ -271,7 +271,7 @@
   ```
 
 ### Task 6: Update WSOnTaskEdit function
-- [ ] Update `WSOnTaskEdit` in `websockets_custom_events.go`:
+- [x] Update `WSOnTaskEdit` in `websockets_custom_events.go`: ✅ COMPLETED
   ```go
   func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
       type taskT struct {
