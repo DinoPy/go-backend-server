@@ -358,6 +358,8 @@ func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid
 		return err
 	}
 
+	fmt.Printf("%+v", connectionData.Data)
+
 	// Handle nullable fields
 	var priority sql.NullInt32
 	if connectionData.Data.Priority != nil {

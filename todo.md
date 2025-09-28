@@ -3,6 +3,8 @@
 [x] Add a field for the unique ID returned from google oAuth and use it as a verification method for the user, if the ID from the frontend doesn't match the ID we have on the server for that email, we will reject the "authentication". 
 [] Order Add or Edit category lists by usage, we can either count each category for all tasks but this may quickly slow the query since it is n based. Or we can move the categories to their own table and have more properties attached to them such as count that will increment for each new task that's created using that particular category.
 [] Maybe add a notification icon on the task bar that will receive all notifications the phone would normally receive.
+[] Add a pop-up add window on the desktop app so it is easier to set all properities from the start.
+[] Make the hidden due tasks that are shown through the toggle show last or something, they are too random right now.
 
 
 ### Better filtering for completed tasks
