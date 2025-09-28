@@ -175,26 +175,54 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 
 	fmt.Printf("%+v", connectionData.Data.Duration)
 
+	// Handle nullable fields
+	var priority sql.NullInt32
+	if connectionData.Data.Priority != nil {
+		priority = sql.NullInt32{
+			Int32: *connectionData.Data.Priority,
+			Valid: true,
+		}
+	}
+
+	var dueAt sql.NullTime
+	if connectionData.Data.DueAt != nil {
+		dueAt = sql.NullTime{
+			Time:  *connectionData.Data.DueAt,
+			Valid: true,
+		}
+	}
+
+	var showBeforeDueTime sql.NullInt32
+	if connectionData.Data.ShowBeforeDueTime != nil {
+		showBeforeDueTime = sql.NullInt32{
+			Int32: *connectionData.Data.ShowBeforeDueTime,
+			Valid: true,
+		}
+	}
+
 	task, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
-		ID:          connectionData.Data.ID,
-		Title:       connectionData.Data.Title,
-		Description: connectionData.Data.Description,
-		CreatedAt:   connectionData.Data.CreatedAt,
+		ID:                connectionData.Data.ID,
+		Title:             connectionData.Data.Title,
+		Description:       connectionData.Data.Description,
+		CreatedAt:         connectionData.Data.CreatedAt,
 		CompletedAt: sql.NullTime{
 			Valid: true,
 			Time:  connectionData.Data.CompletedAt,
 		},
-		Duration: connectionData.Data.Duration,
-		Category: connectionData.Data.Category,
-		Tags:     connectionData.Data.Tags,
+		Duration:          connectionData.Data.Duration,
+		Category:          connectionData.Data.Category,
+		Tags:              connectionData.Data.Tags,
 		ToggledAt: sql.NullInt64{
 			Int64: connectionData.Data.ToggledAt,
 			Valid: true,
 		},
-		IsCompleted:    connectionData.Data.IsCompleted,
-		IsActive:       connectionData.Data.IsActive,
-		LastModifiedAt: connectionData.Data.LastModifiedAt,
-		UserID:         cfg.WSClientManager.clients[SID].User.ID,
+		IsCompleted:       connectionData.Data.IsCompleted,
+		IsActive:          connectionData.Data.IsActive,
+		LastModifiedAt:    connectionData.Data.LastModifiedAt,
+		UserID:            cfg.WSClientManager.clients[SID].User.ID,
+		Priority:          priority,
+		DueAt:             dueAt,
+		ShowBeforeDueTime: showBeforeDueTime,
 	})
 
 	if err != nil {

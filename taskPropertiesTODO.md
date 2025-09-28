@@ -175,7 +175,7 @@
   ```
 
 ### Task 5: Update WSOnTaskCreate function
-- [ ] Update `WSOnTaskCreate` in `websockets_custom_events.go`:
+- [x] Update `WSOnTaskCreate` in `websockets_custom_events.go`: ✅ COMPLETED
   ```go
   func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
       type taskT struct {
