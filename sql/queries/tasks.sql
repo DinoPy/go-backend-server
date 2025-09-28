@@ -1,5 +1,5 @@
 -- name: GetTasks :many
-SELECT * FROM TASKS;
+SELECT * FROM TASKS ORDER BY created_at ASC;
 
 -- name: GetNonCompletedTasks :many
 SELECT *
@@ -32,12 +32,13 @@ WHERE user_id = @user_id
 	  AND (
 		sqlc.narg(category)::text IS NULL OR category = sqlc.narg(category)::text
 	  )
-ORDER BY completed_at DESC;
+ORDER BY created_at ASC;
 
 -- name: GetActiveTaskByUUID :many
 SELECT * 
 FROM tasks
-WHERE user_id = $1 AND is_completed = FALSE;
+WHERE user_id = $1 AND is_completed = FALSE
+ORDER BY created_at ASC;
 
 -- name: CreateTask :one
 INSERT INTO tasks (

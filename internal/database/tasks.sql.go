@@ -205,6 +205,7 @@ const getActiveTaskByUUID = `-- name: GetActiveTaskByUUID :many
 SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at 
 FROM tasks
 WHERE user_id = $1 AND is_completed = FALSE
+ORDER BY created_at ASC
 `
 
 func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]Task, error) {
@@ -269,7 +270,7 @@ WHERE user_id = $1
 	  AND (
 		$6::text IS NULL OR category = $6::text
 	  )
-ORDER BY completed_at DESC
+ORDER BY created_at ASC
 `
 
 type GetCompletedTasksByUUIDParams struct {
@@ -370,7 +371,7 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 }
 
 const getTasks = `-- name: GetTasks :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at FROM TASKS
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at FROM TASKS ORDER BY created_at ASC
 `
 
 func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {

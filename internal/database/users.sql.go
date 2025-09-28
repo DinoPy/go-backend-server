@@ -25,9 +25,7 @@ INSERT INTO users (
 	$4
 )
 ON CONFLICT (email)
-DO UPDATE SET 
-	google_uid = EXCLUDED.google_uid,
-	updated_at = NOW()
+DO NOTHING
 RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid
 `
 
