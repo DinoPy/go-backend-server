@@ -16,6 +16,33 @@ import (
 	"github.com/google/uuid"
 )
 
+type ConnectionError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	Code    int    `json:"code"`
+}
+
+const (
+	ErrorGoogleUIDMismatch = "google_uid_mismatch"
+	ErrorInvalidGoogleUID  = "invalid_google_uid"
+	ErrorUserCreation      = "user_creation_failed"
+	ErrorDatabaseError     = "database_error"
+)
+
+func sendError(c *websocket.Conn, errorType, message string, code int) error {
+	errorResponse := map[string]interface{}{
+		"event": "connection_error",
+		"data": ConnectionError{
+			Type:    errorType,
+			Message: message,
+			Code:    code,
+		},
+	}
+
+	payload, _ := json.Marshal(errorResponse)
+	return c.Write(context.Background(), websocket.MessageText, payload)
+}
+
 func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
 	start := time.Now()
 	defer func() {
@@ -27,18 +54,45 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 	}
 	err := json.Unmarshal(data, &connectionData)
 	if err != nil {
-		return err
+		return sendError(c, "invalid_data", "Invalid connection data", 400)
 	}
 
-	user, err := cfg.DB.CreateUserWithTiming(ctx, database.CreateUserParams{
-		Email:     connectionData.Data.Email,
-		FirstName: connectionData.Data.FirstName,
-		LastName:  connectionData.Data.LastName,
-	})
-	if err != nil {
-		return err
+	// Validate Google UID
+	if connectionData.Data.GoogleUID == "" {
+		return sendError(c, ErrorInvalidGoogleUID, "Google UID is required", 400)
 	}
 
+	// Check if user exists by email
+	existingUser, err := cfg.DB.GetUserByEmail(ctx, connectionData.Data.Email)
+	if err != nil && err != sql.ErrNoRows {
+		return sendError(c, ErrorDatabaseError, "Database error", 500)
+	}
+
+	var user database.User
+
+	if err == sql.ErrNoRows {
+		// User doesn't exist - create new user
+		user, err = cfg.DB.CreateUser(ctx, database.CreateUserParams{
+			Email:     connectionData.Data.Email,
+			FirstName: connectionData.Data.FirstName,
+			LastName:  connectionData.Data.LastName,
+			GoogleUid: sql.NullString{
+				String: connectionData.Data.GoogleUID,
+				Valid:  true,
+			},
+		})
+		if err != nil {
+			return sendError(c, ErrorUserCreation, "Failed to create user", 500)
+		}
+	} else {
+		// User exists - verify Google UID matches
+		if !existingUser.GoogleUid.Valid && existingUser.GoogleUid.String != connectionData.Data.GoogleUID {
+			return sendError(c, ErrorGoogleUIDMismatch, "Google UID does not match", 403)
+		}
+		user = existingUser
+	}
+
+	// Success - continue with normal connection flow
 	cfg.WSClientManager.AddClient(&Client{
 		SID:  SID,
 		Conn: c,
@@ -47,7 +101,7 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 
 	tasks, err := cfg.DB.GetActiveTaskByUUIDWithTiming(ctx, user.ID)
 	if err != nil {
-		return err
+		return sendError(c, ErrorDatabaseError, "Failed to load tasks", 500)
 	}
 
 	var category string

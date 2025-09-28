@@ -2,15 +2,23 @@
 INSERT INTO users (
 	first_name,
 	last_name,
-	email
+	email,
+	google_uid
 ) VALUES (
 	$1,
 	$2,
-	$3
+	$3,
+	$4
 )
 ON CONFLICT (email)
-DO UPDATE SET id = users.id
+DO NOTHING
 RETURNING *;
+
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = $1;
+
+-- name: GetUserByGoogleUID :one
+SELECT * FROM users WHERE google_uid = $1;
 
 -- name: GetUserSettings :one
 SELECT categories, key_commands

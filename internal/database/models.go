@@ -36,4 +36,5 @@ type User struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 	Categories  sql.NullString `json:"categories"`
 	KeyCommands sql.NullString `json:"key_commands"`
+	GoogleUid   sql.NullString `json:"google_uid"`
 }

@@ -16,25 +16,35 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (
 	first_name,
 	last_name,
-	email
+	email,
+	google_uid
 ) VALUES (
 	$1,
 	$2,
-	$3
+	$3,
+	$4
 )
 ON CONFLICT (email)
-DO UPDATE SET id = users.id
-RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands
+DO UPDATE SET 
+	google_uid = EXCLUDED.google_uid,
+	updated_at = NOW()
+RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid
 `
 
 type CreateUserParams struct {
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Email     string `json:"email"`
+	FirstName string         `json:"first_name"`
+	LastName  string         `json:"last_name"`
+	Email     string         `json:"email"`
+	GoogleUid sql.NullString `json:"google_uid"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, arg.FirstName, arg.LastName, arg.Email)
+	row := q.db.QueryRowContext(ctx, createUser,
+		arg.FirstName,
+		arg.LastName,
+		arg.Email,
+		arg.GoogleUid,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -45,6 +55,49 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Categories,
 		&i.KeyCommands,
+		&i.GoogleUid,
+	)
+	return i, err
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid FROM users WHERE email = $1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.FirstName,
+		&i.LastName,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Categories,
+		&i.KeyCommands,
+		&i.GoogleUid,
+	)
+	return i, err
+}
+
+const getUserByGoogleUID = `-- name: GetUserByGoogleUID :one
+SELECT id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid FROM users WHERE google_uid = $1
+`
+
+func (q *Queries) GetUserByGoogleUID(ctx context.Context, googleUid sql.NullString) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByGoogleUID, googleUid)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.FirstName,
+		&i.LastName,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Categories,
+		&i.KeyCommands,
+		&i.GoogleUid,
 	)
 	return i, err
 }
@@ -73,7 +126,7 @@ SET
 	categories = $2
 WHERE
 	id = $1
-RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands
+RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid
 `
 
 type UpdateUserCategoriesParams struct {
@@ -93,6 +146,7 @@ func (q *Queries) UpdateUserCategories(ctx context.Context, arg UpdateUserCatego
 		&i.UpdatedAt,
 		&i.Categories,
 		&i.KeyCommands,
+		&i.GoogleUid,
 	)
 	return i, err
 }
@@ -103,7 +157,7 @@ SET
 	key_commands = $2
 WHERE
 	id = $1
-RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands
+RETURNING id, first_name, last_name, email, created_at, updated_at, categories, key_commands, google_uid
 `
 
 type UpdateUserCommandsParams struct {
@@ -123,6 +177,7 @@ func (q *Queries) UpdateUserCommands(ctx context.Context, arg UpdateUserCommands
 		&i.UpdatedAt,
 		&i.Categories,
 		&i.KeyCommands,
+		&i.GoogleUid,
 	)
 	return i, err
 }
