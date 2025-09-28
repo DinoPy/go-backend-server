@@ -1,8 +1,8 @@
 [] Fix task complete/delete slider, it allows for vertical scroll while horisontally sliding breaking the functionality.
-[] Currently the user ID is hard coded we need some functionality on connect so if the user does not exist it will be created.
-[] Add a field for the unique ID returned from google oAuth and use it as a verification method for the user, if the ID from the frontend doesn't match the ID we have on the server for that email, we will reject the "authentication". 
+[x] Currently the user ID is hard coded we need some functionality on connect so if the user does not exist it will be created.
+[x] Add a field for the unique ID returned from google oAuth and use it as a verification method for the user, if the ID from the frontend doesn't match the ID we have on the server for that email, we will reject the "authentication". 
 [] Order Add or Edit category lists by usage, we can either count each category for all tasks but this may quickly slow the query since it is n based. Or we can move the categories to their own table and have more properties attached to them such as count that will increment for each new task that's created using that particular category.
-
+[] Maybe add a notification icon on the task bar that will receive all notifications the phone would normally receive.
 
 
 ### Better filtering for completed tasks
@@ -79,6 +79,7 @@
     [] Add a priority level. A number from 1 to 10 or even more, that can be null when a task is created it won't have a priority level, and without a priority level it will be filtered last after the higher priority tasks.
 [] By category
 [] By creation date
+[] By distance to due date
 
 
 ### Edit task shortcut
