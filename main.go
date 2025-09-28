@@ -57,7 +57,7 @@ func main() {
 		DB:   dbQuery,
 		PORT: PORT,
 		WSCfg: WebSocketCfg{
-			pingInterval: 15 * time.Second,
+			pingInterval: 5 * time.Second,
 			pingTimeout:  60 * time.Second,
 		},
 		WSClientManager: *NewClientManager(),

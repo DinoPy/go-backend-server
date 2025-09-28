@@ -105,6 +105,8 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 		return err
 	}
 
+	fmt.Printf("%+v", connectionData.Data.Duration)
+
 	task, err := cfg.DB.CreateTask(ctx, database.CreateTaskParams{
 		ID:          connectionData.Data.ID,
 		Title:       connectionData.Data.Title,

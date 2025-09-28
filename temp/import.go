@@ -112,7 +112,6 @@ func main() {
 	}
 
 	for _, task := range tasks {
-		fmt.Printf("%+v\n", task)
 		_, err := dbQuery.CreateTask(context.Background(), database.CreateTaskParams{
 			ID:          task.ID,
 			Title:       task.Title,

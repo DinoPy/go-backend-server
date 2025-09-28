@@ -37,7 +37,7 @@
 				}
 
 				const li = document.createElement('li');
-				li.textContent = `[${msg.event}] ${JSON.stringify(msg.data)}`;
+				li.textContent = `[${new Date().toISOString()} - ${msg.event}] ${JSON.stringify(msg.data)}`;
 				document.getElementById('messages').appendChild(li);
 			};
 
