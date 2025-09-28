@@ -19,7 +19,7 @@
 - [x] Run migration: `goose up` ✅ COMPLETED
 
 ### Task 2: Update SQL queries
-- [ ] Update `sql/queries/tasks.sql` to include new fields in all queries:
+- [x] Update `sql/queries/tasks.sql` to include new fields in all queries: ✅ COMPLETED
   ```sql
   -- name: GetTasks :many
   SELECT * FROM TASKS ORDER BY created_at ASC;

@@ -54,7 +54,10 @@ INSERT INTO tasks (
 	is_active,
 	is_completed,
 	user_id,
-	last_modified_at
+	last_modified_at,
+	priority,
+	due_at,
+	show_before_due_time
 ) VALUES (
 	$1,
 	$2,
@@ -68,7 +71,10 @@ INSERT INTO tasks (
 	$10,
 	$11,
 	$12,
-	$13
+	$13,
+	$14,
+	$15,
+	$16
 ) RETURNING *;
 
 -- name: ToggleTask :one
@@ -100,7 +106,10 @@ SET
 	description = $3,
 	category = $4,
 	tags = $5,
-	last_modified_at = $6
+	last_modified_at = $6,
+	priority = $7,
+	due_at = $8,
+	show_before_due_time = $9
 WHERE id = $1
 RETURNING *;
 
