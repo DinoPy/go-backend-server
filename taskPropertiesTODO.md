@@ -345,12 +345,12 @@
 ## Testing
 
 ### Task 7: Test database migration
-- [ ] Run `goose up` and verify new columns are added
-- [ ] Run `goose down` and verify columns are removed
-- [ ] Run `goose up` again to restore the columns
+- [x] Run `goose up` and verify new columns are added ✅ COMPLETED
+- [x] Run `goose down` and verify columns are removed ✅ COMPLETED
+- [x] Run `goose up` again to restore the columns ✅ COMPLETED
 
 ### Task 8: Test WebSocket events
-- [ ] Start server and verify it starts without errors
+- [x] Start server and verify it starts without errors ✅ COMPLETED
 - [ ] Test task creation with new properties:
   ```json
   {
