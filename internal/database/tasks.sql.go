@@ -23,7 +23,7 @@ SET
 	completed_at = $3,
 	last_modified_at = $4
 WHERE id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
 `
 
 type CompleteTaskParams struct {
@@ -55,6 +55,9 @@ func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (Tas
 		&i.IsCompleted,
 		&i.UserID,
 		&i.LastModifiedAt,
+		&i.Priority,
+		&i.DueAt,
+		&i.ShowBeforeDueTime,
 	)
 	return i, err
 }
@@ -73,7 +76,10 @@ INSERT INTO tasks (
 	is_active,
 	is_completed,
 	user_id,
-	last_modified_at
+	last_modified_at,
+	priority,
+	due_at,
+	show_before_due_time
 ) VALUES (
 	$1,
 	$2,
@@ -87,24 +93,30 @@ INSERT INTO tasks (
 	$10,
 	$11,
 	$12,
-	$13
-) RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
+	$13,
+	$14,
+	$15,
+	$16
+) RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
 `
 
 type CreateTaskParams struct {
-	ID             uuid.UUID     `json:"id"`
-	Title          string        `json:"title"`
-	Description    string        `json:"description"`
-	CreatedAt      time.Time     `json:"created_at"`
-	CompletedAt    sql.NullTime  `json:"completed_at"`
-	Duration       string        `json:"duration"`
-	Category       string        `json:"category"`
-	Tags           []string      `json:"tags"`
-	ToggledAt      sql.NullInt64 `json:"toggled_at"`
-	IsActive       bool          `json:"is_active"`
-	IsCompleted    bool          `json:"is_completed"`
-	UserID         uuid.UUID     `json:"user_id"`
-	LastModifiedAt int64         `json:"last_modified_at"`
+	ID                uuid.UUID     `json:"id"`
+	Title             string        `json:"title"`
+	Description       string        `json:"description"`
+	CreatedAt         time.Time     `json:"created_at"`
+	CompletedAt       sql.NullTime  `json:"completed_at"`
+	Duration          string        `json:"duration"`
+	Category          string        `json:"category"`
+	Tags              []string      `json:"tags"`
+	ToggledAt         sql.NullInt64 `json:"toggled_at"`
+	IsActive          bool          `json:"is_active"`
+	IsCompleted       bool          `json:"is_completed"`
+	UserID            uuid.UUID     `json:"user_id"`
+	LastModifiedAt    int64         `json:"last_modified_at"`
+	Priority          sql.NullInt32 `json:"priority"`
+	DueAt             sql.NullTime  `json:"due_at"`
+	ShowBeforeDueTime sql.NullInt32 `json:"show_before_due_time"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -122,6 +134,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.IsCompleted,
 		arg.UserID,
 		arg.LastModifiedAt,
+		arg.Priority,
+		arg.DueAt,
+		arg.ShowBeforeDueTime,
 	)
 	var i Task
 	err := row.Scan(
@@ -138,6 +153,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.IsCompleted,
 		&i.UserID,
 		&i.LastModifiedAt,
+		&i.Priority,
+		&i.DueAt,
+		&i.ShowBeforeDueTime,
 	)
 	return i, err
 }
@@ -159,18 +177,24 @@ SET
 	description = $3,
 	category = $4,
 	tags = $5,
-	last_modified_at = $6
+	last_modified_at = $6,
+	priority = $7,
+	due_at = $8,
+	show_before_due_time = $9
 WHERE id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
 `
 
 type EditTaskParams struct {
-	ID             uuid.UUID `json:"id"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	Category       string    `json:"category"`
-	Tags           []string  `json:"tags"`
-	LastModifiedAt int64     `json:"last_modified_at"`
+	ID                uuid.UUID     `json:"id"`
+	Title             string        `json:"title"`
+	Description       string        `json:"description"`
+	Category          string        `json:"category"`
+	Tags              []string      `json:"tags"`
+	LastModifiedAt    int64         `json:"last_modified_at"`
+	Priority          sql.NullInt32 `json:"priority"`
+	DueAt             sql.NullTime  `json:"due_at"`
+	ShowBeforeDueTime sql.NullInt32 `json:"show_before_due_time"`
 }
 
 func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error) {
@@ -181,6 +205,9 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error
 		arg.Category,
 		pq.Array(arg.Tags),
 		arg.LastModifiedAt,
+		arg.Priority,
+		arg.DueAt,
+		arg.ShowBeforeDueTime,
 	)
 	var i Task
 	err := row.Scan(
@@ -197,12 +224,15 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error
 		&i.IsCompleted,
 		&i.UserID,
 		&i.LastModifiedAt,
+		&i.Priority,
+		&i.DueAt,
+		&i.ShowBeforeDueTime,
 	)
 	return i, err
 }
 
 const getActiveTaskByUUID = `-- name: GetActiveTaskByUUID :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
 FROM tasks
 WHERE user_id = $1 AND is_completed = FALSE
 ORDER BY created_at ASC
@@ -231,6 +261,9 @@ func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]
 			&i.IsCompleted,
 			&i.UserID,
 			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -246,7 +279,7 @@ func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]
 }
 
 const getCompletedTasksByUUID = `-- name: GetCompletedTasksByUUID :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
 FROM tasks
 WHERE user_id = $1
 	AND is_completed = TRUE
@@ -312,6 +345,9 @@ func (q *Queries) GetCompletedTasksByUUID(ctx context.Context, arg GetCompletedT
 			&i.IsCompleted,
 			&i.UserID,
 			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -327,8 +363,8 @@ func (q *Queries) GetCompletedTasksByUUID(ctx context.Context, arg GetCompletedT
 }
 
 const getNonCompletedTasks = `-- name: GetNonCompletedTasks :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
-FROM TASKS
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+FROM tasks
 WHERE is_completed = FALSE
 ORDER BY user_id
 `
@@ -356,6 +392,9 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 			&i.IsCompleted,
 			&i.UserID,
 			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +410,7 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 }
 
 const getTasks = `-- name: GetTasks :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at FROM TASKS ORDER BY created_at ASC
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time FROM tasks ORDER BY created_at ASC
 `
 
 func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {
@@ -397,6 +436,9 @@ func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {
 			&i.IsCompleted,
 			&i.UserID,
 			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -420,7 +462,7 @@ SET
 	last_modified_at = $5
 WHERE 
 	id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
 `
 
 type ToggleTaskParams struct {
@@ -454,6 +496,9 @@ func (q *Queries) ToggleTask(ctx context.Context, arg ToggleTaskParams) (Task, e
 		&i.IsCompleted,
 		&i.UserID,
 		&i.LastModifiedAt,
+		&i.Priority,
+		&i.DueAt,
+		&i.ShowBeforeDueTime,
 	)
 	return i, err
 }

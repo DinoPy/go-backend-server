@@ -127,8 +127,8 @@
   ```
 
 ### Task 3: Regenerate database models
-- [ ] Run `sqlc generate` to update Go models
-- [ ] Verify `internal/database/models.go` includes new fields:
+- [x] Run `sqlc generate` to update Go models ✅ COMPLETED
+- [x] Verify `internal/database/models.go` includes new fields: ✅ COMPLETED
   ```go
   type Task struct {
       ID                 uuid.UUID      `json:"id"`

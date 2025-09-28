@@ -1,9 +1,9 @@
 -- name: GetTasks :many
-SELECT * FROM TASKS ORDER BY created_at ASC;
+SELECT * FROM tasks ORDER BY created_at ASC;
 
 -- name: GetNonCompletedTasks :many
 SELECT *
-FROM TASKS
+FROM tasks
 WHERE is_completed = FALSE
 ORDER BY user_id;
 
