@@ -11,14 +11,18 @@ import (
 	"github.com/dinopy/taskbar2_server/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/robfig/cron/v3"
 )
 
 type config struct {
 	DB              *database.Queries
+	DBPool          *sql.DB
 	PORT            string
 	WSCfg           WebSocketCfg
 	WSClientManager ClientManager
+	Metrics         *prometheus.Registry
 }
 
 type WebSocketCfg struct {
@@ -52,15 +56,22 @@ func main() {
 		log.Fatalf("Could not connect to DB. Err: %v", err)
 	}
 
+	// Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	dbQuery := database.New(db)
 	cfg := config{
-		DB:   dbQuery,
-		PORT: PORT,
+		DB:     dbQuery,
+		DBPool: db,
+		PORT:   PORT,
 		WSCfg: WebSocketCfg{
 			pingInterval: 5 * time.Second,
 			pingTimeout:  60 * time.Second,
 		},
 		WSClientManager: *NewClientManager(),
+		Metrics:         prometheus.NewRegistry(),
 	}
 
 	// set up router
@@ -71,6 +82,9 @@ func main() {
 
 	// APIs, I'd like to add some in the future.
 	mux.HandleFunc("/api/hello", cfg.HelloApiHandler)
+
+	// Prometheus metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Websocket endpoint
 	mux.HandleFunc("/ws/taskbar", cfg.WebSocketsHandler)

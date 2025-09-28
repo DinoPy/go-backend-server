@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/dinopy/taskbar2_server/internal/database"
+	"github.com/dinopy/taskbar2_server/internal/metrics"
 	"github.com/google/uuid"
 )
 
@@ -47,12 +48,16 @@ func (m *ClientManager) AddClient(c *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.clients[c.SID] = c
+	metrics.WebSocketConnections.WithLabelValues(c.User.ID.String()).Inc()
 	log.Println("Client added:", c.SID)
 }
 
 func (m *ClientManager) RemoveClient(id uuid.UUID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if client, exists := m.clients[id]; exists {
+		metrics.WebSocketConnections.WithLabelValues(client.User.ID.String()).Dec()
+	}
 	delete(m.clients, id)
 	log.Println("Client removed:", id)
 }

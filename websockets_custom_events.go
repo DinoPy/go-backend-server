@@ -12,10 +12,16 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/dinopy/taskbar2_server/internal/database"
+	"github.com/dinopy/taskbar2_server/internal/metrics"
 	"github.com/google/uuid"
 )
 
 func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("connect").Observe(time.Since(start).Seconds())
+	}()
+
 	var connectionData struct {
 		Data User `json:"data"`
 	}
@@ -24,7 +30,7 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 		return err
 	}
 
-	user, err := cfg.DB.CreateUser(ctx, database.CreateUserParams{
+	user, err := cfg.DB.CreateUserWithTiming(ctx, database.CreateUserParams{
 		Email:     connectionData.Data.Email,
 		FirstName: connectionData.Data.FirstName,
 		LastName:  connectionData.Data.LastName,
@@ -39,7 +45,7 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 		User: user,
 	})
 
-	tasks, err := cfg.DB.GetActiveTaskByUUID(ctx, user.ID)
+	tasks, err := cfg.DB.GetActiveTaskByUUIDWithTiming(ctx, user.ID)
 	if err != nil {
 		return err
 	}
@@ -83,6 +89,11 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 }
 
 func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_create").Observe(time.Since(start).Seconds())
+	}()
+
 	type taskT struct {
 		ID             uuid.UUID `json:"id"`
 		Title          string    `json:"title"`
@@ -107,7 +118,7 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 
 	fmt.Printf("%+v", connectionData.Data.Duration)
 
-	task, err := cfg.DB.CreateTask(ctx, database.CreateTaskParams{
+	task, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
 		ID:          connectionData.Data.ID,
 		Title:       connectionData.Data.Title,
 		Description: connectionData.Data.Description,
@@ -145,6 +156,11 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 }
 
 func (cfg *config) WSOnTaskToggle(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_toggle").Observe(time.Since(start).Seconds())
+	}()
+
 	type taskT struct {
 		UUID           uuid.UUID `json:"uuid"`
 		ToggledAt      int64     `json:"toggled_at"`
@@ -161,7 +177,7 @@ func (cfg *config) WSOnTaskToggle(ctx context.Context, c *websocket.Conn, SID uu
 		return err
 	}
 
-	task, err := cfg.DB.ToggleTask(ctx, database.ToggleTaskParams{
+	task, err := cfg.DB.ToggleTaskWithTiming(ctx, database.ToggleTaskParams{
 		ID: connectionData.Data.UUID,
 		ToggledAt: sql.NullInt64{
 			Int64: connectionData.Data.ToggledAt,
@@ -185,6 +201,11 @@ func (cfg *config) WSOnTaskToggle(ctx context.Context, c *websocket.Conn, SID uu
 }
 
 func (cfg *config) WSOnTaskCompleted(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_completed").Observe(time.Since(start).Seconds())
+	}()
+
 	type taskT struct {
 		ID             uuid.UUID `json:"id"`
 		CompletedAt    time.Time `json:"completed_at"`
@@ -201,7 +222,7 @@ func (cfg *config) WSOnTaskCompleted(ctx context.Context, c *websocket.Conn, SID
 	}
 	fmt.Println(connectionData)
 
-	task, err := cfg.DB.CompleteTask(ctx, database.CompleteTaskParams{
+	task, err := cfg.DB.CompleteTaskWithTiming(ctx, database.CompleteTaskParams{
 		ID:       connectionData.Data.ID,
 		Duration: connectionData.Data.Duration,
 		CompletedAt: sql.NullTime{
@@ -227,6 +248,11 @@ func (cfg *config) WSOnTaskCompleted(ctx context.Context, c *websocket.Conn, SID
 }
 
 func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_edit").Observe(time.Since(start).Seconds())
+	}()
+
 	type taskT struct {
 		ID             uuid.UUID `json:"id"`
 		Title          string    `json:"title"`
@@ -244,7 +270,7 @@ func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid
 		return err
 	}
 
-	task, err := cfg.DB.EditTask(ctx, database.EditTaskParams{
+	task, err := cfg.DB.EditTaskWithTiming(ctx, database.EditTaskParams{
 		ID:             connectionData.Data.ID,
 		Title:          connectionData.Data.Title,
 		Description:    connectionData.Data.Description,
@@ -264,6 +290,11 @@ func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid
 }
 
 func (cfg *config) WSOnTaskDelete(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_delete").Observe(time.Since(start).Seconds())
+	}()
+
 	type taskT struct {
 		ID uuid.UUID `json:"id"`
 	}
@@ -276,7 +307,7 @@ func (cfg *config) WSOnTaskDelete(ctx context.Context, c *websocket.Conn, SID uu
 		return err
 	}
 
-	err = cfg.DB.DeleteTask(ctx, connectionData.Data.ID)
+	err = cfg.DB.DeleteTaskWithTiming(ctx, connectionData.Data.ID)
 	if err != nil {
 		return err
 	}
@@ -296,6 +327,11 @@ func (cfg *config) WSOnTaskDelete(ctx context.Context, c *websocket.Conn, SID uu
 }
 
 func (cfg *config) WSOnGetCompletedTasks(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("get_completed_tasks").Observe(time.Since(start).Seconds())
+	}()
+
 	type searchT struct {
 		Category    string    `json:"category"`
 		StartDate   time.Time `json:"start_date"`
@@ -369,7 +405,7 @@ func (cfg *config) WSOnGetCompletedTasks(ctx context.Context, c *websocket.Conn,
 	}
 	fmt.Printf("Final filters used for the query:\n%+v\n\n", queryFilters)
 
-	tasks, err := cfg.DB.GetCompletedTasksByUUID(ctx, queryFilters)
+	tasks, err := cfg.DB.GetCompletedTasksByUUIDWithTiming(ctx, queryFilters)
 	if err != nil {
 		return err
 	}
@@ -395,12 +431,17 @@ type TaskNoNullable struct {
 }
 
 func (cfg *config) WSOnRequestHardRefresh(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
-	settings, err := cfg.DB.GetUserSettings(ctx, cfg.WSClientManager.clients[SID].User.ID)
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("hard_refresh").Observe(time.Since(start).Seconds())
+	}()
+
+	settings, err := cfg.DB.GetUserSettingsWithTiming(ctx, cfg.WSClientManager.clients[SID].User.ID)
 	if err != nil {
 		return nil
 	}
 
-	tasks, err := cfg.DB.GetActiveTaskByUUID(ctx, cfg.WSClientManager.clients[SID].User.ID)
+	tasks, err := cfg.DB.GetActiveTaskByUUIDWithTiming(ctx, cfg.WSClientManager.clients[SID].User.ID)
 	if err != nil {
 		return nil
 	}
@@ -437,7 +478,7 @@ func (cfg *config) WSOnUserUpdatedCategories(ctx context.Context, c *websocket.C
 
 	fmt.Printf("%+v\n", connectionData)
 
-	updatedUser, err := cfg.DB.UpdateUserCategories(ctx, database.UpdateUserCategoriesParams{
+	updatedUser, err := cfg.DB.UpdateUserCategoriesWithTiming(ctx, database.UpdateUserCategoriesParams{
 		ID: cfg.WSClientManager.clients[SID].User.ID,
 		Categories: sql.NullString{
 			String: strings.Join(connectionData.Data, ","),
@@ -471,7 +512,7 @@ func (cfg *config) WSOnNewCommandAdded(ctx context.Context, c *websocket.Conn, S
 
 	fmt.Printf("%+v\n", connectionData)
 
-	user, err := cfg.DB.UpdateUserCommands(ctx, database.UpdateUserCommandsParams{
+	user, err := cfg.DB.UpdateUserCommandsWithTiming(ctx, database.UpdateUserCommandsParams{
 		ID: cfg.WSClientManager.clients[SID].User.ID,
 		KeyCommands: sql.NullString{
 			String: connectionData.Data,
@@ -534,7 +575,7 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 	lastEpochMs := time.Now().UnixMilli()
 
 	// get all the tasks that are not completed from db
-	tasks, err := cfg.DB.GetNonCompletedTasks(context.Background())
+	tasks, err := cfg.DB.GetNonCompletedTasksWithTiming(context.Background())
 	if err != nil {
 		log.Println(err)
 	}
@@ -583,7 +624,7 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 			LastModifiedAt: lastEpochMs,
 		}
 
-		_, err = cfg.DB.CompleteTask(context.Background(), completeTaskParams)
+		_, err = cfg.DB.CompleteTaskWithTiming(context.Background(), completeTaskParams)
 		if err != nil {
 			log.Println(err)
 		}
@@ -610,7 +651,7 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 			LastModifiedAt: lastEpochMs,
 		}
 
-		_, err = cfg.DB.CreateTask(context.Background(), createTaskParams)
+		_, err = cfg.DB.CreateTaskWithTiming(context.Background(), createTaskParams)
 		if err != nil {
 			log.Println(err)
 		}
@@ -623,12 +664,12 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 		}
 		log.Printf("Currently processing client SID: %s\n", client.SID.String())
 
-		tasks, err := cfg.DB.GetActiveTaskByUUID(context.Background(), client.User.ID)
+		tasks, err := cfg.DB.GetActiveTaskByUUIDWithTiming(context.Background(), client.User.ID)
 		if err != nil {
 			log.Println(err)
 		}
 
-		user, err := cfg.DB.GetUserSettings(context.Background(), client.User.ID)
+		user, err := cfg.DB.GetUserSettingsWithTiming(context.Background(), client.User.ID)
 		if err != nil {
 			log.Println(err)
 		}
