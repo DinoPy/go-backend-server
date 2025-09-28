@@ -153,7 +153,7 @@
 ## WebSocket Event Updates
 
 ### Task 4: Update WebSocket task struct
-- [ ] Update `taskT` struct in `websockets_custom_events.go` to include new fields:
+- [x] Update `taskT` struct in `websockets_custom_events.go` to include new fields: ✅ COMPLETED
   ```go
   type taskT struct {
       ID                 uuid.UUID  `json:"id"`

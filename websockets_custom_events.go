@@ -149,18 +149,21 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 	}()
 
 	type taskT struct {
-		ID             uuid.UUID `json:"id"`
-		Title          string    `json:"title"`
-		Description    string    `json:"descripiton"`
-		CreatedAt      time.Time `json:"created_at"`
-		CompletedAt    time.Time `json:"completed_at"`
-		Duration       string    `json:"duration"`
-		Category       string    `json:"category"`
-		Tags           []string  `json:"tags"`
-		ToggledAt      int64     `json:"toggled_at"`
-		IsCompleted    bool      `json:"is_completed"`
-		IsActive       bool      `json:"is_active"`
-		LastModifiedAt int64     `json:"last_modified_at"`
+		ID                uuid.UUID  `json:"id"`
+		Title             string     `json:"title"`
+		Description       string     `json:"descripiton"`
+		CreatedAt         time.Time  `json:"created_at"`
+		CompletedAt       time.Time  `json:"completed_at"`
+		Duration          string     `json:"duration"`
+		Category          string     `json:"category"`
+		Tags              []string   `json:"tags"`
+		ToggledAt         int64      `json:"toggled_at"`
+		IsCompleted       bool       `json:"is_completed"`
+		IsActive          bool       `json:"is_active"`
+		LastModifiedAt    int64      `json:"last_modified_at"`
+		Priority          *int32     `json:"priority"`
+		DueAt             *time.Time `json:"due_at"`
+		ShowBeforeDueTime *int32     `json:"show_before_due_time"`
 	}
 	var connectionData struct {
 		Data taskT `json:"data"`
@@ -308,12 +311,15 @@ func (cfg *config) WSOnTaskEdit(ctx context.Context, c *websocket.Conn, SID uuid
 	}()
 
 	type taskT struct {
-		ID             uuid.UUID `json:"id"`
-		Title          string    `json:"title"`
-		Description    string    `json:"description"`
-		Category       string    `json:"category"`
-		Tags           []string  `json:"tags"`
-		LastModifiedAt int64     `json:"last_modified_at"`
+		ID                uuid.UUID  `json:"id"`
+		Title             string     `json:"title"`
+		Description       string     `json:"description"`
+		Category          string     `json:"category"`
+		Tags              []string   `json:"tags"`
+		LastModifiedAt    int64      `json:"last_modified_at"`
+		Priority          *int32     `json:"priority"`
+		DueAt             *time.Time `json:"due_at"`
+		ShowBeforeDueTime *int32     `json:"show_before_due_time"`
 	}
 
 	var connectionData struct {
@@ -469,19 +475,22 @@ func (cfg *config) WSOnGetCompletedTasks(ctx context.Context, c *websocket.Conn,
 }
 
 type TaskNoNullable struct {
-	ID             uuid.UUID `json:"id"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	CreatedAt      time.Time `json:"created_at"`
-	CompletedAt    time.Time `json:"completed_at"`
-	Duration       string    `json:"duration"`
-	Category       string    `json:"category"`
-	Tags           []string  `json:"tags"`
-	ToggledAt      int64     `json:"toggled_at"`
-	IsActive       bool      `json:"is_active"`
-	IsCompleted    bool      `json:"is_completed"`
-	UserID         uuid.UUID `json:"user_id"`
-	LastModifiedAt int64     `json:"last_modified_at"`
+	ID                uuid.UUID  `json:"id"`
+	Title             string     `json:"title"`
+	Description       string     `json:"description"`
+	CreatedAt         time.Time  `json:"created_at"`
+	CompletedAt       time.Time  `json:"completed_at"`
+	Duration          string     `json:"duration"`
+	Category          string     `json:"category"`
+	Tags              []string   `json:"tags"`
+	ToggledAt         int64      `json:"toggled_at"`
+	IsActive          bool       `json:"is_active"`
+	IsCompleted       bool       `json:"is_completed"`
+	UserID            uuid.UUID  `json:"user_id"`
+	LastModifiedAt    int64      `json:"last_modified_at"`
+	Priority          *int32     `json:"priority"`
+	DueAt             *time.Time `json:"due_at"`
+	ShowBeforeDueTime *int32     `json:"show_before_due_time"`
 }
 
 func (cfg *config) WSOnRequestHardRefresh(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
