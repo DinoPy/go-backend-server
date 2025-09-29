@@ -91,8 +91,8 @@
   ```
 
 ### Task 4: Regenerate database models
-- [ ] Run `sqlc generate` to update Go models
-- [ ] Verify `GetTaskByID` function is generated in `internal/database/tasks.sql.go`
+- [x] Run `sqlc generate` to update Go models
+- [x] Verify `GetTaskByID` function is generated in `internal/database/tasks.sql.go`
 
 ### Task 5: Add timing wrapper for GetTaskByID
 - [ ] Add timing wrapper to `internal/database/db_prometheus_timing.go`:

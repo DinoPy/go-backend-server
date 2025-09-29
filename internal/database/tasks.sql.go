@@ -409,6 +409,34 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 	return items, nil
 }
 
+const getTaskByID = `-- name: GetTaskByID :one
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time FROM tasks WHERE id = $1
+`
+
+func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTaskByID, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Description,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.Duration,
+		&i.Category,
+		pq.Array(&i.Tags),
+		&i.ToggledAt,
+		&i.IsActive,
+		&i.IsCompleted,
+		&i.UserID,
+		&i.LastModifiedAt,
+		&i.Priority,
+		&i.DueAt,
+		&i.ShowBeforeDueTime,
+	)
+	return i, err
+}
+
 const getTasks = `-- name: GetTasks :many
 SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time FROM tasks ORDER BY created_at ASC
 `
