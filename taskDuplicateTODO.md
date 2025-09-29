@@ -123,9 +123,9 @@
 - [x] Test with task belonging to different user (should return unauthorized error)
 
 ### Task 7: Verify property copying
-- [ ] Create a task with all properties set (priority, due date, show timing, etc.)
-- [ ] Duplicate the task
-- [ ] Verify the duplicate has:
+- [x] Create a task with all properties set (priority, due date, show timing, etc.)
+- [x] Duplicate the task
+- [x] Verify the duplicate has:
   - ✅ New ID
   - ✅ Current creation time
   - ✅ Duration reset to "00:00:00"
