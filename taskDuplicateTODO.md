@@ -14,7 +14,7 @@
   ```
 
 ### Task 2: Create WSOnTaskDuplicate function
-- [ ] Add new function `WSOnTaskDuplicate` in `websockets_custom_events.go`:
+- [x] Add new function `WSOnTaskDuplicate` in `websockets_custom_events.go`:
   ```go
   func (cfg *config) WSOnTaskDuplicate(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
       start := time.Now()

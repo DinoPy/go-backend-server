@@ -766,11 +766,10 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 				Int64: ternary(task.ToggledAt.Int64 == 0, 0, lastEpochMs),
 				Valid: ternary(task.ToggledAt.Int64 == 0, false, true),
 			},
-			IsActive:       task.IsActive,
-			IsCompleted:    false,
-			UserID:         task.UserID,
-			LastModifiedAt: lastEpochMs,
-			// ADD THESE MISSING PROPERTIES:
+			IsActive:          task.IsActive,
+			IsCompleted:       false,
+			UserID:            task.UserID,
+			LastModifiedAt:    lastEpochMs,
 			Priority:          task.Priority,          // Copy from original task
 			DueAt:             task.DueAt,             // Copy from original task
 			ShowBeforeDueTime: task.ShowBeforeDueTime, // Copy from original task
@@ -821,4 +820,70 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 			Tasks:       tasks,
 		})
 	}
+}
+
+func (cfg *config) WSOnTaskDuplicate(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_duplicate").Observe(time.Since(start).Seconds())
+	}()
+
+	type duplicateRequest struct {
+		TaskID uuid.UUID `json:"task_id"`
+	}
+
+	var request struct {
+		Data duplicateRequest `json:"data"`
+	}
+	err := json.Unmarshal(data, &request)
+	if err != nil {
+		return err
+	}
+
+	// Get the original task from database
+	// Note: We'll need to add a GetTaskByID query first
+	originalTask, err := cfg.DB.GetTaskByIDWithTiming(ctx, request.Data.TaskID)
+	if err != nil {
+		return err
+	}
+
+	// Verify the task belongs to the requesting user
+	if originalTask.UserID != cfg.WSClientManager.clients[SID].User.ID {
+		return sendError(c, "unauthorized", "Task does not belong to user", 403)
+	}
+
+	// Create duplicate task with modified properties
+	duplicateTask, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
+		ID:          uuid.New(),                    // New ID
+		Title:       originalTask.Title,            // Copy
+		Description: originalTask.Description,      // Copy
+		CreatedAt:   time.Now().UTC(),              // Current time
+		CompletedAt: sql.NullTime{Valid: false},    // Null (not completed)
+		Duration:    "00:00:00",                    // Reset to zero
+		Category:    originalTask.Category,         // Copy
+		Tags:        originalTask.Tags,             // Copy
+		ToggledAt:   sql.NullInt64{Valid: false},   // Reset to null
+		IsActive:    false,                         // Reset to false
+		IsCompleted: false,                         // Reset to false
+		UserID:      originalTask.UserID,           // Copy
+		LastModifiedAt: time.Now().UnixMilli(),     // Current time
+		Priority:    originalTask.Priority,         // Copy
+		DueAt:       originalTask.DueAt,            // Copy
+		ShowBeforeDueTime: originalTask.ShowBeforeDueTime, // Copy
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Emit the new task via new_task_created event
+	cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+		ctx,
+		"new_task_created",
+		cfg.WSClientManager.clients[SID].User.ID,
+		SID,
+		duplicateTask,
+	)
+
+	return nil
 }
