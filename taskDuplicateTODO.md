@@ -95,7 +95,7 @@
 - [x] Verify `GetTaskByID` function is generated in `internal/database/tasks.sql.go`
 
 ### Task 5: Add timing wrapper for GetTaskByID
-- [ ] Add timing wrapper to `internal/database/db_prometheus_timing.go`:
+- [x] Add timing wrapper to `internal/database/db_prometheus_timing.go`:
   ```go
   func (q *Queries) GetTaskByIDWithTiming(ctx context.Context, id uuid.UUID) (Task, error) {
       start := time.Now()

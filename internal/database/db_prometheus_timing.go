@@ -104,3 +104,11 @@ func (q *Queries) GetNonCompletedTasksWithTiming(ctx context.Context) ([]Task, e
 	}()
 	return q.GetNonCompletedTasks(ctx)
 }
+
+func (q *Queries) GetTaskByIDWithTiming(ctx context.Context, id uuid.UUID) (Task, error) {
+	start := time.Now()
+	defer func() {
+		metrics.DatabaseQueryDuration.WithLabelValues("get_task_by_id").Observe(time.Since(start).Seconds())
+	}()
+	return q.GetTaskByID(ctx, id)
+}
