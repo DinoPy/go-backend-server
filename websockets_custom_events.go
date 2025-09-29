@@ -854,21 +854,21 @@ func (cfg *config) WSOnTaskDuplicate(ctx context.Context, c *websocket.Conn, SID
 
 	// Create duplicate task with modified properties
 	duplicateTask, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
-		ID:          uuid.New(),                    // New ID
-		Title:       originalTask.Title,            // Copy
-		Description: originalTask.Description,      // Copy
-		CreatedAt:   time.Now().UTC(),              // Current time
-		CompletedAt: sql.NullTime{Valid: false},    // Null (not completed)
-		Duration:    "00:00:00",                    // Reset to zero
-		Category:    originalTask.Category,         // Copy
-		Tags:        originalTask.Tags,             // Copy
-		ToggledAt:   sql.NullInt64{Valid: false},   // Reset to null
-		IsActive:    false,                         // Reset to false
-		IsCompleted: false,                         // Reset to false
-		UserID:      originalTask.UserID,           // Copy
-		LastModifiedAt: time.Now().UnixMilli(),     // Current time
-		Priority:    originalTask.Priority,         // Copy
-		DueAt:       originalTask.DueAt,            // Copy
+		ID:                uuid.New(),                     // New ID
+		Title:             originalTask.Title,             // Copy
+		Description:       originalTask.Description,       // Copy
+		CreatedAt:         time.Now().UTC(),               // Current time
+		CompletedAt:       sql.NullTime{Valid: false},     // Null (not completed)
+		Duration:          "00:00:00",                     // Reset to zero
+		Category:          originalTask.Category,          // Copy
+		Tags:              originalTask.Tags,              // Copy
+		ToggledAt:         sql.NullInt64{Valid: false},    // Reset to null
+		IsActive:          false,                          // Reset to false
+		IsCompleted:       false,                          // Reset to false
+		UserID:            originalTask.UserID,            // Copy
+		LastModifiedAt:    time.Now().UnixMilli(),         // Current time
+		Priority:          originalTask.Priority,          // Copy
+		DueAt:             originalTask.DueAt,             // Copy
 		ShowBeforeDueTime: originalTask.ShowBeforeDueTime, // Copy
 	})
 
@@ -877,11 +877,10 @@ func (cfg *config) WSOnTaskDuplicate(ctx context.Context, c *websocket.Conn, SID
 	}
 
 	// Emit the new task via new_task_created event
-	cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+	cfg.WSClientManager.BroadcastToSameUser(
 		ctx,
 		"new_task_created",
 		cfg.WSClientManager.clients[SID].User.ID,
-		SID,
 		duplicateTask,
 	)
 
