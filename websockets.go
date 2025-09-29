@@ -225,6 +225,12 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println("Error occured in onTaskDelete function: ", err)
 			}
+		case "task_duplicate":
+			err := cfg.WSOnTaskDuplicate(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in onTaskDuplicate function:", err)
+				return
+			}
 		case "get_completed_tasks":
 			err := cfg.WSOnGetCompletedTasks(ctx, c, SID, data)
 			if err != nil {
