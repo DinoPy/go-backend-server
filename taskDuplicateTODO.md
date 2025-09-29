@@ -107,8 +107,8 @@
   ```
 
 ### Task 6: Test the functionality
-- [ ] Start server and verify it starts without errors
-- [ ] Test task duplication with valid task ID:
+- [x] Start server and verify it starts without errors
+- [x] Test task duplication with valid task ID:
   ```json
   {
     "event": "task_duplicate",
@@ -117,10 +117,10 @@
     }
   }
   ```
-- [ ] Verify the duplicated task has all properties copied except the reset ones
-- [ ] Check that the new task is emitted via `new_task_created` event
-- [ ] Test with non-existent task ID (should return error)
-- [ ] Test with task belonging to different user (should return unauthorized error)
+- [x] Verify the duplicated task has all properties copied except the reset ones
+- [x] Check that the new task is emitted via `new_task_created` event
+- [x] Test with non-existent task ID (should return error)
+- [x] Test with task belonging to different user (should return unauthorized error)
 
 ### Task 7: Verify property copying
 - [ ] Create a task with all properties set (priority, due date, show timing, etc.)
