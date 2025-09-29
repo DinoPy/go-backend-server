@@ -40,6 +40,9 @@ FROM tasks
 WHERE user_id = $1 AND is_completed = FALSE
 ORDER BY created_at ASC;
 
+-- name: GetTaskByID :one
+SELECT * FROM tasks WHERE id = $1;
+
 -- name: CreateTask :one
 INSERT INTO tasks (
 	id,

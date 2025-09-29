@@ -84,7 +84,7 @@
   ```
 
 ### Task 3: Add GetTaskByID database query
-- [ ] Add new query to `sql/queries/tasks.sql`:
+- [x] Add new query to `sql/queries/tasks.sql`:
   ```sql
   -- name: GetTaskByID :one
   SELECT * FROM tasks WHERE id = $1;
