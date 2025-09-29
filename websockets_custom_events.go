@@ -770,6 +770,10 @@ func (cfg *config) WSOnMidnightTaskRefresh() {
 			IsCompleted:    false,
 			UserID:         task.UserID,
 			LastModifiedAt: lastEpochMs,
+			// ADD THESE MISSING PROPERTIES:
+			Priority:          task.Priority,          // Copy from original task
+			DueAt:             task.DueAt,             // Copy from original task
+			ShowBeforeDueTime: task.ShowBeforeDueTime, // Copy from original task
 		}
 
 		_, err = cfg.DB.CreateTaskWithTiming(context.Background(), createTaskParams)
