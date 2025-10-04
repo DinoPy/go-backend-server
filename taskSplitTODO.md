@@ -184,9 +184,9 @@
 - [x] Test splitting an active task (should preserve active state and set toggled_at)
 
 ### Task 5: Verify property handling
-- [ ] Create a task with all properties set (priority, due date, show timing, etc.)
-- [ ] Split the task into multiple parts
-- [ ] Verify each split task has:
+- [x] Create a task with all properties set (priority, due date, show timing, etc.)
+- [x] Split the task into multiple parts
+- [x] Verify each split task has:
   - ✅ New ID
   - ✅ Split title and description
   - ✅ Split duration
