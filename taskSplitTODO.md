@@ -205,9 +205,9 @@
   - Task should still be split in database
 
 ### Task 7: Test transaction rollback
-- [ ] Test with invalid split data that causes database error
-- [ ] Verify that original task is not deleted if split creation fails
-- [ ] Verify transaction rollback works correctly
+- [x] Test with invalid split data that causes database error
+- [x] Verify that original task is not deleted if split creation fails
+- [x] Verify transaction rollback works correctly
 
 ## Notes
 - Uses database transaction to ensure atomicity
