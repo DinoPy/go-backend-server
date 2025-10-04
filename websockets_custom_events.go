@@ -1001,6 +1001,8 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 
 	// Emit events only if original task was not completed
 	if !originalTask.IsCompleted {
+		log.Printf("Emitting events for task split - original task ID: %s, splits: %d", originalTask.ID, len(splitTasks))
+		
 		// Emit task deleted event for original task
 		cfg.WSClientManager.BroadcastToSameUserNoIssuer(
 			ctx,
@@ -1016,6 +1018,7 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 
 		// Emit new task created events for each split
 		for _, splitTask := range splitTasks {
+			log.Printf("Emitting new_task_created for split task ID: %s", splitTask.ID)
 			cfg.WSClientManager.BroadcastToSameUserNoIssuer(
 				ctx,
 				"new_task_created",
@@ -1024,6 +1027,8 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 				splitTask,
 			)
 		}
+	} else {
+		log.Printf("Task split completed but original task was already completed - not emitting events")
 	}
 
 	return nil
