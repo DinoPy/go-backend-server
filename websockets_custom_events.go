@@ -920,6 +920,9 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 	// Get the original task from database
 	originalTask, err := cfg.DB.GetTaskByID(ctx, request.Data.TaskID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return sendError(c, "not_found", "Task not found", 404)
+		}
 		return err
 	}
 

@@ -153,8 +153,8 @@
   ```
 
 ### Task 3: Test the functionality
-- [ ] Start server and verify it starts without errors
-- [ ] Test task split with valid task ID and splits:
+- [x] Start server and verify it starts without errors
+- [x] Test task split with valid task ID and splits:
   ```json
   {
     "event": "task_split",
