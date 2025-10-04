@@ -197,10 +197,10 @@
   - ✅ IsActive = original task's active state
 
 ### Task 6: Verify event emission
-- [ ] Test splitting an incomplete task:
+- [x] Test splitting an incomplete task:
   - Should emit `related_task_deleted` for original
   - Should emit `new_task_created` for each split
-- [ ] Test splitting a completed task:
+- [x] Test splitting a completed task:
   - Should NOT emit any events
   - Task should still be split in database
 
