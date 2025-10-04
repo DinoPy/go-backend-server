@@ -886,3 +886,137 @@ func (cfg *config) WSOnTaskDuplicate(ctx context.Context, c *websocket.Conn, SID
 
 	return nil
 }
+
+func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("task_split").Observe(time.Since(start).Seconds())
+	}()
+
+	type splitTask struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Duration    string `json:"duration"`
+	}
+
+	type splitRequest struct {
+		TaskID uuid.UUID   `json:"task_id"`
+		Splits []splitTask `json:"splits"`
+	}
+
+	var request struct {
+		Data splitRequest `json:"data"`
+	}
+	err := json.Unmarshal(data, &request)
+	if err != nil {
+		return err
+	}
+
+	// Validate splits
+	if len(request.Data.Splits) == 0 {
+		return sendError(c, "invalid_request", "At least one split is required", 400)
+	}
+
+	// Get the original task from database
+	originalTask, err := cfg.DB.GetTaskByID(ctx, request.Data.TaskID)
+	if err != nil {
+		return err
+	}
+
+	// Verify the task belongs to the requesting user
+	if originalTask.UserID != cfg.WSClientManager.clients[SID].User.ID {
+		return sendError(c, "unauthorized", "Task does not belong to user", 403)
+	}
+
+	// Start database transaction
+	tx, err := cfg.DBPool.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	queries := cfg.DB.WithTx(tx)
+
+	// Delete the original task
+	err = queries.DeleteTask(ctx, originalTask.ID)
+	if err != nil {
+		return err
+	}
+
+	// Create split tasks
+	var splitTasks []database.Task
+	lastEpochMs := time.Now().UnixMilli()
+
+	for _, split := range request.Data.Splits {
+		// Determine toggled_at value
+		var toggledAt sql.NullInt64
+		if originalTask.IsActive {
+			toggledAt = sql.NullInt64{
+				Int64: lastEpochMs,
+				Valid: true,
+			}
+		} else {
+			toggledAt = sql.NullInt64{Valid: false}
+		}
+
+		splitTask, err := queries.CreateTask(ctx, database.CreateTaskParams{
+			ID:                uuid.New(),
+			Title:             split.Title,
+			Description:       split.Description,
+			CreatedAt:         originalTask.CreatedAt, // Keep original creation time
+			CompletedAt:       sql.NullTime{Valid: false},
+			Duration:          split.Duration,
+			Category:          originalTask.Category,
+			Tags:              originalTask.Tags,
+			ToggledAt:         toggledAt,
+			IsActive:          originalTask.IsActive, // Keep original active state
+			IsCompleted:       false,                 // Always reset to false
+			UserID:            originalTask.UserID,
+			LastModifiedAt:    lastEpochMs,
+			Priority:          originalTask.Priority,
+			DueAt:             originalTask.DueAt,
+			ShowBeforeDueTime: originalTask.ShowBeforeDueTime,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		splitTasks = append(splitTasks, splitTask)
+	}
+
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	// Emit events only if original task was not completed
+	if !originalTask.IsCompleted {
+		// Emit task deleted event for original task
+		cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+			ctx,
+			"related_task_deleted",
+			cfg.WSClientManager.clients[SID].User.ID,
+			SID,
+			struct {
+				ID uuid.UUID `json:"id"`
+			}{
+				ID: originalTask.ID,
+			},
+		)
+
+		// Emit new task created events for each split
+		for _, splitTask := range splitTasks {
+			cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+				ctx,
+				"new_task_created",
+				cfg.WSClientManager.clients[SID].User.ID,
+				SID,
+				splitTask,
+			)
+		}
+	}
+
+	return nil
+}

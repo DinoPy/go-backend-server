@@ -14,7 +14,7 @@
   ```
 
 ### Task 2: Create WSOnTaskSplit function
-- [ ] Add new function `WSOnTaskSplit` in `websockets_custom_events.go`:
+- [x] Add new function `WSOnTaskSplit` in `websockets_custom_events.go`:
   ```go
   func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
       start := time.Now()
