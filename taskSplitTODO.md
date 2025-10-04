@@ -177,11 +177,11 @@
   ```
 
 ### Task 4: Test edge cases
-- [ ] Test with empty splits array (should return error)
-- [ ] Test with non-existent task ID (should return error)
-- [ ] Test with task belonging to different user (should return unauthorized error)
-- [ ] Test splitting a completed task (should not emit events)
-- [ ] Test splitting an active task (should preserve active state and set toggled_at)
+- [x] Test with empty splits array (should return error)
+- [x] Test with non-existent task ID (should return error)
+- [x] Test with task belonging to different user (should return unauthorized error)
+- [x] Test splitting a completed task (should not emit events)
+- [x] Test splitting an active task (should preserve active state and set toggled_at)
 
 ### Task 5: Verify property handling
 - [ ] Create a task with all properties set (priority, due date, show timing, etc.)

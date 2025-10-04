@@ -917,6 +917,11 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 		return sendError(c, "invalid_request", "At least one split is required", 400)
 	}
 
+	// Validate task ID format
+	if request.Data.TaskID == uuid.Nil {
+		return sendError(c, "invalid_request", "Invalid task ID format", 400)
+	}
+
 	// Get the original task from database
 	originalTask, err := cfg.DB.GetTaskByID(ctx, request.Data.TaskID)
 	if err != nil {
