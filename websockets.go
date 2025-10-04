@@ -231,6 +231,12 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 				log.Println("Error occurred in onTaskDuplicate function:", err)
 				return
 			}
+		case "task_split":
+			err := cfg.WSOnTaskSplit(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in onTaskSplit function:", err)
+				return
+			}
 		case "get_completed_tasks":
 			err := cfg.WSOnGetCompletedTasks(ctx, c, SID, data)
 			if err != nil {
