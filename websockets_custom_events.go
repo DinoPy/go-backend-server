@@ -971,14 +971,14 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 			ID:                uuid.New(),
 			Title:             split.Title,
 			Description:       split.Description,
-			CreatedAt:         originalTask.CreatedAt, // Keep original creation time
-			CompletedAt:       sql.NullTime{Valid: false},
+			CreatedAt:         originalTask.CreatedAt,   // Keep original creation time
+			CompletedAt:       originalTask.CompletedAt, // Keep original completion time
 			Duration:          split.Duration,
 			Category:          originalTask.Category,
 			Tags:              originalTask.Tags,
 			ToggledAt:         toggledAt,
-			IsActive:          originalTask.IsActive, // Keep original active state
-			IsCompleted:       false,                 // Always reset to false
+			IsActive:          originalTask.IsActive,    // Keep original active state
+			IsCompleted:       originalTask.IsCompleted, // Keep original completion status
 			UserID:            originalTask.UserID,
 			LastModifiedAt:    lastEpochMs,
 			Priority:          originalTask.Priority,
@@ -1002,13 +1002,12 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 	// Emit events only if original task was not completed
 	if !originalTask.IsCompleted {
 		log.Printf("Emitting events for task split - original task ID: %s, splits: %d", originalTask.ID, len(splitTasks))
-		
+
 		// Emit task deleted event for original task
-		cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+		cfg.WSClientManager.BroadcastToSameUser(
 			ctx,
 			"related_task_deleted",
 			cfg.WSClientManager.clients[SID].User.ID,
-			SID,
 			struct {
 				ID uuid.UUID `json:"id"`
 			}{
@@ -1019,11 +1018,10 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 		// Emit new task created events for each split
 		for _, splitTask := range splitTasks {
 			log.Printf("Emitting new_task_created for split task ID: %s", splitTask.ID)
-			cfg.WSClientManager.BroadcastToSameUserNoIssuer(
+			cfg.WSClientManager.BroadcastToSameUser(
 				ctx,
 				"new_task_created",
 				cfg.WSClientManager.clients[SID].User.ID,
-				SID,
 				splitTask,
 			)
 		}
