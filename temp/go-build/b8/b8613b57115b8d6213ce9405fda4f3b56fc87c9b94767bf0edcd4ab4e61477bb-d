@@ -1,6 +1,0 @@
-./db.go
-./db_prometheus_timing.go
-./models.go
-./notifications.sql.go
-./tasks.sql.go
-./users.sql.go

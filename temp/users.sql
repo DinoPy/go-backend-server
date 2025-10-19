@@ -1,2 +1,0 @@
-INSERT INTO users (id, first_name, last_name, email, categories, key_commands)
-VALUES('b1193283-bade-46a3-9c57-67bdf6925697','Alex','Test','001test.alex@gmail.com','Learning,Project,Life,Organization,Work,Games,Research,Sleep,Relax,Meditate,Food,Practice,House Development,Vacation,Workout,Reading,Breaks,Watch','{"1":{"key":"1","url":"https://t3.chat/chat"},"2":{"key":"2","url":"https://invoices.hkr.team/"},"g":{"key":"g","url":"https://google.com"}}');
