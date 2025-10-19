@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -143,6 +144,15 @@ func (cfg config) wsPing(ctx context.Context, c *websocket.Conn, pongCh chan str
 	}
 }
 
+func prettify(data string) (string, error) {
+	var prettyJSON bytes.Buffer
+	err := json.Indent(&prettyJSON, []byte(data), "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("error indenting JSON: %w", err)
+	}
+	return prettyJSON.String(), nil
+}
+
 func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
@@ -262,10 +272,41 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println("Error occured in OnNewCommandAdded function: ", err)
 			}
+		case "notifications_fetch":
+			err := cfg.WSOnNotificationsFetch(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in OnNotificationsFetch function:", err)
+			}
+		case "notification_mark_seen":
+			err := cfg.WSOnNotificationMarkSeen(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in OnNotificationMarkSeen function:", err)
+			}
+		case "notification_mark_all_seen":
+			err := cfg.WSOnNotificationMarkAllSeen(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in OnNotificationMarkAllSeen function:", err)
+			}
+		case "notification_archive":
+			err := cfg.WSOnNotificationArchive(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in OnNotificationArchive function:", err)
+			}
+		case "notification_snooze":
+			err := cfg.WSOnNotificationSnooze(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in OnNotificationSnooze function:", err)
+			}
 		case "taskbar-update":
 			cfg.WSClientManager.BroadcastToSameUser(ctx, "taskbar-ack", cfg.WSClientManager.clients[SID].User.ID, "From "+SID.String())
 		default:
 			log.Println("Unknown event:", msg.Event)
+			pretty, err := prettify(string(data))
+			if err != nil {
+				log.Println("Error prettifying JSON:", err)
+			} else {
+				log.Println("Pretty JSON:", pretty)
+			}
 		}
 	}
 }

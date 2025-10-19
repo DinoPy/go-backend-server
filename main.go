@@ -99,6 +99,7 @@ func main() {
 	location, _ := time.LoadLocation("Europe/Bucharest")
 	cron := cron.New(cron.WithLocation(location))
 	cron.AddFunc("59 23 * * *", cfg.WSOnMidnightTaskRefresh)
+	cron.AddFunc("@every 1m", cfg.DispatchDueNotifications)
 	cron.Start()
 
 	log.Println("Serving on http://localhost:" + cfg.PORT + "...")

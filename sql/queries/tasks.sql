@@ -40,6 +40,47 @@ FROM tasks
 WHERE user_id = $1 AND is_completed = FALSE
 ORDER BY created_at ASC;
 
+-- name: GetTasksDueForVisibility :many
+SELECT * 
+FROM tasks
+WHERE user_id = $1 
+  AND is_completed = FALSE
+  AND due_at IS NOT NULL
+  AND show_before_due_time IS NOT NULL
+  AND due_at - INTERVAL '1 minute' * show_before_due_time <= NOW()
+  AND due_at - INTERVAL '1 minute' * show_before_due_time > NOW() - INTERVAL '1 minute'
+ORDER BY due_at ASC;
+
+-- name: GetTasksDueForNotifications :many
+SELECT * 
+FROM tasks
+WHERE user_id = $1 
+  AND is_completed = FALSE
+  AND due_at IS NOT NULL
+  AND (
+    -- 24 hours before due
+    (due_at - INTERVAL '24 hours' <= NOW() AND due_at - INTERVAL '24 hours' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 12 hours before due
+    (due_at - INTERVAL '12 hours' <= NOW() AND due_at - INTERVAL '12 hours' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 6 hours before due
+    (due_at - INTERVAL '6 hours' <= NOW() AND due_at - INTERVAL '6 hours' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 3 hours before due
+    (due_at - INTERVAL '3 hours' <= NOW() AND due_at - INTERVAL '3 hours' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 2 hours before due
+    (due_at - INTERVAL '2 hours' <= NOW() AND due_at - INTERVAL '2 hours' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 1 hour before due
+    (due_at - INTERVAL '1 hour' <= NOW() AND due_at - INTERVAL '1 hour' > NOW() - INTERVAL '1 minute')
+    OR
+    -- 30 minutes before due
+    (due_at - INTERVAL '30 minutes' <= NOW() AND due_at - INTERVAL '30 minutes' > NOW() - INTERVAL '1 minute')
+  )
+ORDER BY due_at ASC;
+
 -- name: GetTaskByID :one
 SELECT * FROM tasks WHERE id = $1;
 

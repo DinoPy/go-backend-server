@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Due Date Test Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .task { border: 1px solid #ccc; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .notification { background-color: #f0f8ff; border-left: 4px solid #007bff; margin: 5px 0; padding: 10px; }
+        .urgent { background-color: #ffe6e6; border-left-color: #dc3545; }
+        .high { background-color: #fff3cd; border-left-color: #ffc107; }
+        .normal { background-color: #d1ecf1; border-left-color: #17a2b8; }
+        .low { background-color: #d4edda; border-left-color: #28a745; }
+        button { margin: 5px; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #messages { max-height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Due Date Test Client</h1>
+    
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="createTestTask()">Create Test Task (Due in 1 hour)</button>
+        <button onclick="createUrgentTask()">Create Urgent Task (Due in 30 min)</button>
+        <button onclick="createTomorrowTask()">Create Tomorrow Task (Due in 24 hours)</button>
+        <button onclick="clearMessages()">Clear Messages</button>
+    </div>
+
+    <div id="connection-status">Not connected</div>
+    
+    <h2>Tasks</h2>
+    <div id="tasks"></div>
+    
+    <h2>Notifications</h2>
+    <div id="notifications"></div>
+    
+    <h2>Messages</h2>
+    <div id="messages"></div>
+
+    <script>
+        let socket;
+        let userId = "28c07fc5-2732-47c0-b305-92982fbddcef";
+        let userEmail = "001test.alex@gmail.com";
+
+        function connect() {
+            if (socket) {
+                socket.close();
+            }
+            
+            socket = new WebSocket('ws://localhost:8080/ws/taskbar');
+
+            socket.onopen = () => {
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('connection-status').style.color = 'green';
+                
+                sendEvent("connect", {
+                    id: userId,
+                    email: userEmail,
+                    first_name: "Alex",
+                    last_name: "Test",
+                    google_uid: "test-google-uid-123"
+                });
+            };
+
+            socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                console.log('Received:', msg);
+                addMessage(msg);
+
+                if (msg.event === "ping") {
+                    sendEvent("pong", "alive and well");
+                } else if (msg.event === "connected") {
+                    displayTasks(msg.data.tasks);
+                    displayNotifications(msg.data.notifications);
+                } else if (msg.event === "tasks_became_visible") {
+                    addMessage({ event: "tasks_became_visible", data: msg.data });
+                    displayTasks(msg.data);
+                } else if (msg.event === "notification_created") {
+                    addMessage({ event: "notification_created", data: msg.data });
+                    displayNotification(msg.data);
+                } else if (msg.event === "notifications_reemitted") {
+                    msg.data.forEach(notification => displayNotification(notification));
+                }
+            };
+
+            socket.onclose = (e) => {
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                document.getElementById('connection-status').style.color = 'red';
+                console.log('Socket closed, retrying in 3s...', e.reason);
+                setTimeout(connect, 3000);
+            };
+
+            socket.onerror = (err) => {
+                console.error('Socket error:', err);
+            };
+        }
+
+        function sendEvent(eventName, data) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({event: eventName, data: data}));
+            }
+        }
+
+        function createTestTask() {
+            const now = new Date();
+            const dueDate = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+            
+            const task = {
+                id: generateUUID(),
+                title: "Test Task - Due in 1 Hour",
+                description: "This task is due in 1 hour to test notifications",
+                created_at: now.toISOString(),
+                completed_at: null,
+                duration: "00:00:00",
+                category: "test",
+                tags: ["test", "due-date"],
+                toggled_at: null,
+                is_completed: false,
+                is_active: false,
+                last_modified_at: now.getTime(),
+                priority: 5,
+                due_at: dueDate.toISOString(),
+                show_before_due_time: 30 // Show 30 minutes before due
+            };
+            
+            sendEvent("task_create", { data: task });
+        }
+
+        function createUrgentTask() {
+            const now = new Date();
+            const dueDate = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+            
+            const task = {
+                id: generateUUID(),
+                title: "URGENT Task - Due in 30 Minutes",
+                description: "This urgent task is due in 30 minutes",
+                created_at: now.toISOString(),
+                completed_at: null,
+                duration: "00:00:00",
+                category: "urgent",
+                tags: ["urgent", "due-soon"],
+                toggled_at: null,
+                is_completed: false,
+                is_active: false,
+                last_modified_at: now.getTime(),
+                priority: 10,
+                due_at: dueDate.toISOString(),
+                show_before_due_time: 15 // Show 15 minutes before due
+            };
+            
+            sendEvent("task_create", { data: task });
+        }
+
+        function createTomorrowTask() {
+            const now = new Date();
+            const dueDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+            
+            const task = {
+                id: generateUUID(),
+                title: "Tomorrow Task - Due in 24 Hours",
+                description: "This task is due tomorrow",
+                created_at: now.toISOString(),
+                completed_at: null,
+                duration: "00:00:00",
+                category: "planning",
+                tags: ["tomorrow", "planning"],
+                toggled_at: null,
+                is_completed: false,
+                is_active: false,
+                last_modified_at: now.getTime(),
+                priority: 3,
+                due_at: dueDate.toISOString(),
+                show_before_due_time: 60 // Show 1 hour before due
+            };
+            
+            sendEvent("task_create", { data: task });
+        }
+
+        function displayTasks(tasks) {
+            const container = document.getElementById('tasks');
+            container.innerHTML = '';
+            
+            tasks.forEach(task => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'task';
+                taskDiv.innerHTML = `
+                    <h3>${task.title}</h3>
+                    <p><strong>Category:</strong> ${task.category}</p>
+                    <p><strong>Priority:</strong> ${task.priority || 'None'}</p>
+                    <p><strong>Due:</strong> ${task.due_at ? new Date(task.due_at).toLocaleString() : 'No due date'}</p>
+                    <p><strong>Show Before Due:</strong> ${task.show_before_due_time ? task.show_before_due_time + ' minutes' : 'Not set'}</p>
+                    <p><strong>Status:</strong> ${task.is_completed ? 'Completed' : (task.is_active ? 'Active' : 'Inactive')}</p>
+                `;
+                container.appendChild(taskDiv);
+            });
+        }
+
+        function displayNotification(notification) {
+            const container = document.getElementById('notifications');
+            const notificationDiv = document.createElement('div');
+            notificationDiv.className = `notification ${notification.priority}`;
+            notificationDiv.innerHTML = `
+                <h4>${notification.title}</h4>
+                <p>${notification.description}</p>
+                <p><strong>Priority:</strong> ${notification.priority}</p>
+                <p><strong>Type:</strong> ${notification.notification_type}</p>
+                <p><strong>Created:</strong> ${new Date(notification.created_at).toLocaleString()}</p>
+            `;
+            container.appendChild(notificationDiv);
+        }
+
+        function displayNotifications(notifications) {
+            const container = document.getElementById('notifications');
+            container.innerHTML = '';
+            notifications.forEach(notification => displayNotification(notification));
+        }
+
+        function addMessage(msg) {
+            const container = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.innerHTML = `<strong>[${new Date().toLocaleTimeString()}]</strong> ${msg.event}: ${JSON.stringify(msg.data, null, 2)}`;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            connect();
+        };
+    </script>
+</body>
+</html>

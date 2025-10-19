@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/dinopy/taskbar2_server/internal/database"
 	"github.com/dinopy/taskbar2_server/internal/metrics"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type ConnectionError struct {
@@ -30,6 +32,7 @@ const (
 )
 
 func sendError(c *websocket.Conn, errorType, message string, code int) error {
+	log.Printf("sendError triggered: type=%s code=%d message=%s", errorType, code, message)
 	errorResponse := map[string]interface{}{
 		"event": "connection_error",
 		"data": ConnectionError{
@@ -41,6 +44,34 @@ func sendError(c *websocket.Conn, errorType, message string, code int) error {
 
 	payload, _ := json.Marshal(errorResponse)
 	return c.Write(context.Background(), websocket.MessageText, payload)
+}
+
+func logDBError(context string, err error) {
+	if err == nil {
+		return
+	}
+	log.Printf("%s: %v", context, err)
+}
+
+func isUndefinedTableError(err error, table string) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		if pqErr.Code == "42P01" {
+			return true
+		}
+	}
+	// Fallback string check in case driver differs.
+	return strings.Contains(strings.ToLower(err.Error()), fmt.Sprintf(`relation "%s"`, strings.ToLower(table)))
+}
+
+func (cfg *config) getClientBySID(SID uuid.UUID) (*Client, bool) {
+	cfg.WSClientManager.mu.RLock()
+	defer cfg.WSClientManager.mu.RUnlock()
+	client, ok := cfg.WSClientManager.clients[SID]
+	return client, ok
 }
 
 func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
@@ -101,7 +132,46 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 
 	tasks, err := cfg.DB.GetActiveTaskByUUIDWithTiming(ctx, user.ID)
 	if err != nil {
+		logDBError("Failed to load tasks for user "+user.ID.String(), err)
 		return sendError(c, ErrorDatabaseError, "Failed to load tasks", 500)
+	}
+
+	notificationsParams := database.ListNotificationsByUserParams{
+		UserID:            user.ID,
+		Statuses:          []string{"unseen", "seen"},
+		OffsetVal:         sql.NullInt32{Int32: 0, Valid: true},
+		LimitVal:          sql.NullInt32{Int32: 10, Valid: true},
+		IncludeSnoozed:    sql.NullBool{Valid: true, Bool: false},
+		ExpiredOnly:       sql.NullBool{Valid: true, Bool: false},
+		NotificationTypes: nil,
+		Priorities:        nil,
+	}
+
+	notifications := []database.Notification{}
+
+	notificationsResult, err := cfg.DB.ListNotificationsByUserWithTiming(ctx, notificationsParams)
+	if err != nil {
+		if isUndefinedTableError(err, "notifications") {
+			log.Printf("Notifications table missing when loading for user %s; returning empty list", user.ID.String())
+		} else {
+			logDBError("Failed to load notifications for user "+user.ID.String(), err)
+			return sendError(c, ErrorDatabaseError, "Failed to load notifications", 500)
+		}
+	} else {
+		notifications = notificationsResult
+	}
+
+	unseenCount := int64(0)
+	unseenCountValue, err := cfg.DB.CountUnseenNotificationsWithTiming(ctx, user.ID)
+	if err != nil {
+		if isUndefinedTableError(err, "notifications") {
+			log.Printf("Notifications table missing when counting unseen for user %s; defaulting to 0", user.ID.String())
+		} else {
+			logDBError("Failed to load notification metadata for user "+user.ID.String(), err)
+			return sendError(c, ErrorDatabaseError, "Failed to load notifications metadata", 500)
+		}
+	} else {
+		unseenCount = unseenCountValue
 	}
 
 	var category string
@@ -115,29 +185,33 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 	}
 
 	type finalUser struct {
-		SID         uuid.UUID       `json:"sid"`
-		ID          uuid.UUID       `json:"id"`
-		FirstName   string          `json:"first_name"`
-		LastName    string          `json:"last_name"`
-		Email       string          `json:"email"`
-		CreatedAt   time.Time       `json:"created_at"`
-		UpdatedAt   time.Time       `json:"updated_at"`
-		Categories  string          `json:"categories"`
-		KeyCommands string          `json:"key_commands"`
-		Tasks       []database.Task `json:"tasks"`
+		SID                    uuid.UUID               `json:"sid"`
+		ID                     uuid.UUID               `json:"id"`
+		FirstName              string                  `json:"first_name"`
+		LastName               string                  `json:"last_name"`
+		Email                  string                  `json:"email"`
+		CreatedAt              time.Time               `json:"created_at"`
+		UpdatedAt              time.Time               `json:"updated_at"`
+		Categories             string                  `json:"categories"`
+		KeyCommands            string                  `json:"key_commands"`
+		Tasks                  []database.Task         `json:"tasks"`
+		Notifications          []database.Notification `json:"notifications"`
+		NotificationsUnseenCnt int64                   `json:"notifications_unseen_count"`
 	}
 
 	cfg.WSClientManager.SendToClient(ctx, "connected", SID, finalUser{
-		SID:         SID,
-		ID:          user.ID,
-		FirstName:   user.FirstName,
-		LastName:    user.LastName,
-		Email:       user.Email,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
-		Categories:  category,
-		KeyCommands: keyCommands,
-		Tasks:       tasks,
+		SID:                    SID,
+		ID:                     user.ID,
+		FirstName:              user.FirstName,
+		LastName:               user.LastName,
+		Email:                  user.Email,
+		CreatedAt:              user.CreatedAt,
+		UpdatedAt:              user.UpdatedAt,
+		Categories:             category,
+		KeyCommands:            keyCommands,
+		Tasks:                  tasks,
+		Notifications:          notifications,
+		NotificationsUnseenCnt: unseenCount,
 	})
 	return nil
 }
@@ -1030,4 +1104,461 @@ func (cfg *config) WSOnTaskSplit(ctx context.Context, c *websocket.Conn, SID uui
 	}
 
 	return nil
+}
+
+func (cfg *config) WSOnNotificationsFetch(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("notifications_fetch").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	type fetchRequest struct {
+		Offset            int32    `json:"offset"`
+		Limit             int32    `json:"limit"`
+		Statuses          []string `json:"statuses"`
+		NotificationTypes []string `json:"notification_types"`
+		Priorities        []string `json:"priorities"`
+		IncludeSnoozed    *bool    `json:"include_snoozed"`
+		ExpiredOnly       *bool    `json:"expired_only"`
+	}
+
+	var payload struct {
+		Data fetchRequest `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	const defaultPageSize int32 = 10
+	const maxPageSize int32 = 100
+
+	offset := payload.Data.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	limit := payload.Data.Limit
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+
+	params := database.ListNotificationsByUserParams{
+		UserID:            client.User.ID,
+		Statuses:          payload.Data.Statuses,
+		NotificationTypes: payload.Data.NotificationTypes,
+		Priorities:        payload.Data.Priorities,
+		OffsetVal:         sql.NullInt32{Int32: offset, Valid: true},
+		LimitVal:          sql.NullInt32{Int32: limit, Valid: true},
+	}
+
+	if payload.Data.IncludeSnoozed != nil {
+		params.IncludeSnoozed = sql.NullBool{Bool: *payload.Data.IncludeSnoozed, Valid: true}
+	}
+	if payload.Data.ExpiredOnly != nil {
+		params.ExpiredOnly = sql.NullBool{Bool: *payload.Data.ExpiredOnly, Valid: true}
+	}
+
+	notifications, err := cfg.DB.ListNotificationsByUserWithTiming(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	response := struct {
+		Notifications []database.Notification `json:"notifications"`
+		Offset        int32                   `json:"offset"`
+		Limit         int32                   `json:"limit"`
+		HasMore       bool                    `json:"has_more"`
+	}{
+		Notifications: notifications,
+		Offset:        offset,
+		Limit:         limit,
+		HasMore:       int32(len(notifications)) == limit,
+	}
+
+	return cfg.WSClientManager.SendToClient(ctx, "notifications_batch", SID, response)
+}
+
+func (cfg *config) WSOnNotificationMarkSeen(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("notification_mark_seen").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	var payload struct {
+		Data struct {
+			NotificationIDs []uuid.UUID `json:"notification_ids"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	if len(payload.Data.NotificationIDs) == 0 {
+		return nil
+	}
+
+	lastModified := time.Now().UnixMilli()
+	updates, err := cfg.DB.MarkNotificationsSeenWithTiming(ctx, database.MarkNotificationsSeenParams{
+		LastModifiedAt:  lastModified,
+		UserID:          client.User.ID,
+		NotificationIds: payload.Data.NotificationIDs,
+	})
+	if err != nil {
+		return err
+	}
+
+	cfg.broadcastNotificationSet(ctx, "notifications_marked_seen", client.User.ID, updates)
+	cfg.emitNotificationUnseenCount(ctx, client.User.ID)
+	return nil
+}
+
+func (cfg *config) WSOnNotificationMarkAllSeen(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("notification_mark_all_seen").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	var payload struct {
+		Data struct {
+			NotificationIDs []uuid.UUID `json:"notification_ids"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	lastModified := time.Now().UnixMilli()
+	var (
+		updates []database.Notification
+		err     error
+	)
+
+	if len(payload.Data.NotificationIDs) > 0 {
+		updates, err = cfg.DB.MarkNotificationsSeenWithTiming(ctx, database.MarkNotificationsSeenParams{
+			LastModifiedAt:  lastModified,
+			UserID:          client.User.ID,
+			NotificationIds: payload.Data.NotificationIDs,
+		})
+	} else {
+		updates, err = cfg.DB.MarkAllNotificationsSeenWithTiming(ctx, database.MarkAllNotificationsSeenParams{
+			UserID:         client.User.ID,
+			LastModifiedAt: lastModified,
+		})
+	}
+
+	if err != nil {
+		return err
+	}
+
+	cfg.broadcastNotificationSet(ctx, "notifications_marked_seen", client.User.ID, updates)
+	cfg.emitNotificationUnseenCount(ctx, client.User.ID)
+	return nil
+}
+
+func (cfg *config) WSOnNotificationArchive(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("notification_archive").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	var payload struct {
+		Data struct {
+			NotificationID uuid.UUID `json:"notification_id"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	if payload.Data.NotificationID == uuid.Nil {
+		return fmt.Errorf("notification_id is required")
+	}
+
+	lastModified := time.Now().UnixMilli()
+	notification, err := cfg.DB.ArchiveNotificationWithTiming(ctx, database.ArchiveNotificationParams{
+		ID:             payload.Data.NotificationID,
+		UserID:         client.User.ID,
+		LastModifiedAt: lastModified,
+	})
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	cfg.broadcastSingleNotification(ctx, "notification_archived", client.User.ID, notification)
+	cfg.emitNotificationUnseenCount(ctx, client.User.ID)
+	return nil
+}
+
+func (cfg *config) WSOnNotificationSnooze(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("notification_snooze").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	var payload struct {
+		Data struct {
+			NotificationID uuid.UUID `json:"notification_id"`
+			SnoozeUntil    *int64    `json:"snooze_until"`   // epoch millis
+			SnoozeMinutes  *int64    `json:"snooze_minutes"` // minutes from now
+			SnoozeSeconds  *int64    `json:"snooze_seconds"` // seconds from now
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	if payload.Data.NotificationID == uuid.Nil {
+		return fmt.Errorf("notification_id is required")
+	}
+
+	var snoozeUntil time.Time
+	now := time.Now()
+	switch {
+	case payload.Data.SnoozeUntil != nil:
+		snoozeUntil = time.UnixMilli(*payload.Data.SnoozeUntil)
+	case payload.Data.SnoozeMinutes != nil:
+		snoozeUntil = now.Add(time.Duration(*payload.Data.SnoozeMinutes) * time.Minute)
+	case payload.Data.SnoozeSeconds != nil:
+		snoozeUntil = now.Add(time.Duration(*payload.Data.SnoozeSeconds) * time.Second)
+	default:
+		snoozeUntil = now.Add(5 * time.Minute)
+	}
+
+	if snoozeUntil.Before(now.Add(5 * time.Second)) {
+		snoozeUntil = now.Add(5 * time.Minute)
+	}
+
+	lastModified := time.Now().UnixMilli()
+	notification, err := cfg.DB.SnoozeNotificationWithTiming(ctx, database.SnoozeNotificationParams{
+		ID:             payload.Data.NotificationID,
+		SnoozedUntil:   sql.NullTime{Time: snoozeUntil.UTC(), Valid: true},
+		UserID:         client.User.ID,
+		LastModifiedAt: lastModified,
+	})
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	cfg.broadcastSingleNotification(ctx, "notification_snoozed", client.User.ID, notification)
+	cfg.emitNotificationUnseenCount(ctx, client.User.ID)
+	return nil
+}
+
+func (cfg *config) emitNotificationUnseenCount(ctx context.Context, userID uuid.UUID) {
+	count, err := cfg.DB.CountUnseenNotificationsWithTiming(ctx, userID)
+	if err != nil {
+		log.Println("failed to compute unseen notification count:", err)
+		return
+	}
+
+	cfg.WSClientManager.BroadcastToSameUser(ctx, "notifications_unseen_count", userID, struct {
+		Count int64 `json:"count"`
+	}{
+		Count: count,
+	})
+}
+
+func (cfg *config) broadcastNotificationSet(ctx context.Context, event string, userID uuid.UUID, notifications []database.Notification) {
+	if len(notifications) == 0 {
+		return
+	}
+
+	cfg.WSClientManager.BroadcastToSameUser(ctx, event, userID, struct {
+		Notifications []database.Notification `json:"notifications"`
+	}{
+		Notifications: notifications,
+	})
+}
+
+func (cfg *config) broadcastSingleNotification(ctx context.Context, event string, userID uuid.UUID, notification database.Notification) {
+	cfg.WSClientManager.BroadcastToSameUser(ctx, event, userID, notification)
+}
+
+func (cfg *config) DispatchDueNotifications() {
+	ctx := context.Background()
+	lastModified := time.Now().UnixMilli()
+
+	// Handle snoozed notifications
+	notifications, err := cfg.DB.ReleaseDueSnoozedNotificationsWithTiming(ctx, lastModified)
+	if err != nil {
+		log.Println("failed to release snoozed notifications:", err)
+		return
+	}
+
+	if len(notifications) > 0 {
+		userBuckets := make(map[uuid.UUID][]database.Notification)
+		for _, notification := range notifications {
+			userBuckets[notification.UserID] = append(userBuckets[notification.UserID], notification)
+		}
+
+		for userID, bucket := range userBuckets {
+			cfg.broadcastNotificationSet(ctx, "notifications_reemitted", userID, bucket)
+			cfg.emitNotificationUnseenCount(ctx, userID)
+		}
+	}
+
+	// Handle task visibility changes and due notifications
+	cfg.processTaskDueEvents(ctx)
+}
+
+func (cfg *config) processTaskDueEvents(ctx context.Context) {
+	// Get all users who have active connections
+	cfg.WSClientManager.mu.RLock()
+	userIDs := make([]uuid.UUID, 0, len(cfg.WSClientManager.clients))
+	for _, client := range cfg.WSClientManager.clients {
+		userIDs = append(userIDs, client.User.ID)
+	}
+	cfg.WSClientManager.mu.RUnlock()
+
+	for _, userID := range userIDs {
+		cfg.processUserTaskDueEvents(ctx, userID)
+	}
+}
+
+func (cfg *config) processUserTaskDueEvents(ctx context.Context, userID uuid.UUID) {
+	// Check for tasks that should become visible
+	tasksDueForVisibility, err := cfg.DB.GetTasksDueForVisibilityWithTiming(ctx, userID)
+	if err != nil {
+		log.Printf("Failed to get tasks due for visibility for user %s: %v", userID, err)
+	} else if len(tasksDueForVisibility) > 0 {
+		cfg.broadcastTaskVisibilityChange(ctx, userID, tasksDueForVisibility)
+	}
+
+	// Check for tasks that need due notifications
+	tasksDueForNotifications, err := cfg.DB.GetTasksDueForNotificationsWithTiming(ctx, userID)
+	if err != nil {
+		log.Printf("Failed to get tasks due for notifications for user %s: %v", userID, err)
+	} else if len(tasksDueForNotifications) > 0 {
+		cfg.createDueNotifications(ctx, userID, tasksDueForNotifications)
+	}
+}
+
+func (cfg *config) broadcastTaskVisibilityChange(ctx context.Context, userID uuid.UUID, tasks []database.Task) {
+	cfg.WSClientManager.BroadcastToSameUser(ctx, "tasks_became_visible", userID, tasks)
+	log.Printf("Broadcasted %d tasks becoming visible for user %s", len(tasks), userID)
+}
+
+func (cfg *config) createDueNotifications(ctx context.Context, userID uuid.UUID, tasks []database.Task) {
+	now := time.Now()
+	lastModified := now.UnixMilli()
+
+	for _, task := range tasks {
+		// Check if we already sent a notification for this task recently
+		existingNotification, err := cfg.DB.GetNotificationByTaskAndTypeWithTiming(ctx, userID, "due_task", task.ID.String())
+		if err == nil && existingNotification.ID != uuid.Nil {
+			// Skip creating duplicate notification
+			log.Printf("Skipping duplicate notification for task '%s' (already sent recently)", task.Title)
+			continue
+		}
+
+		// Calculate time until due
+		timeUntilDue := task.DueAt.Time.Sub(now)
+
+		// Determine notification message based on time until due
+		var title, description string
+		var priority string = "normal"
+
+		if timeUntilDue <= 30*time.Minute {
+			title = "Task Due Soon!"
+			description = fmt.Sprintf("Task '%s' is due in 30 minutes or less", task.Title)
+			priority = "urgent"
+		} else if timeUntilDue <= 1*time.Hour {
+			title = "Task Due in 1 Hour"
+			description = fmt.Sprintf("Task '%s' is due in 1 hour", task.Title)
+			priority = "high"
+		} else if timeUntilDue <= 2*time.Hour {
+			title = "Task Due in 2 Hours"
+			description = fmt.Sprintf("Task '%s' is due in 2 hours", task.Title)
+			priority = "high"
+		} else if timeUntilDue <= 3*time.Hour {
+			title = "Task Due in 3 Hours"
+			description = fmt.Sprintf("Task '%s' is due in 3 hours", task.Title)
+			priority = "normal"
+		} else if timeUntilDue <= 6*time.Hour {
+			title = "Task Due in 6 Hours"
+			description = fmt.Sprintf("Task '%s' is due in 6 hours", task.Title)
+			priority = "normal"
+		} else if timeUntilDue <= 12*time.Hour {
+			title = "Task Due in 12 Hours"
+			description = fmt.Sprintf("Task '%s' is due in 12 hours", task.Title)
+			priority = "normal"
+		} else if timeUntilDue <= 24*time.Hour {
+			title = "Task Due Tomorrow"
+			description = fmt.Sprintf("Task '%s' is due in 24 hours", task.Title)
+			priority = "low"
+		}
+
+		// Create notification payload
+		payload := map[string]interface{}{
+			"task_id":    task.ID,
+			"task_title": task.Title,
+			"due_at":     task.DueAt.Time,
+			"category":   task.Category,
+		}
+		payloadJSON, _ := json.Marshal(payload)
+
+		// Create notification
+		notification, err := cfg.DB.CreateNotificationWithTiming(ctx, database.CreateNotificationParams{
+			ID:               uuid.New(),
+			UserID:           userID,
+			Title:            title,
+			Description:      sql.NullString{String: description, Valid: true},
+			Status:           "unseen",
+			NotificationType: "due_task",
+			Payload:          payloadJSON,
+			Priority:         priority,
+			ExpiresAt:        sql.NullTime{Time: task.DueAt.Time.Add(24 * time.Hour), Valid: true}, // Expire 24 hours after due date
+			LastModifiedAt:   lastModified,
+		})
+
+		if err != nil {
+			log.Printf("Failed to create due notification for task %s: %v", task.ID, err)
+			continue
+		}
+
+		// Broadcast notification to user
+		cfg.broadcastSingleNotification(ctx, "notification_created", userID, notification)
+		cfg.emitNotificationUnseenCount(ctx, userID)
+
+		log.Printf("Created due notification for task '%s' (due in %v) for user %s", task.Title, timeUntilDue, userID)
+	}
 }

@@ -6,10 +6,31 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type Notification struct {
+	ID               uuid.UUID       `json:"id"`
+	UserID           uuid.UUID       `json:"user_id"`
+	Title            string          `json:"title"`
+	Description      sql.NullString  `json:"description"`
+	Status           string          `json:"status"`
+	NotificationType string          `json:"notification_type"`
+	Payload          json.RawMessage `json:"payload"`
+	Priority         string          `json:"priority"`
+	ExpiresAt        sql.NullTime    `json:"expires_at"`
+	SnoozedUntil     sql.NullTime    `json:"snoozed_until"`
+	ActionUrl        sql.NullString  `json:"action_url"`
+	ActionText       sql.NullString  `json:"action_text"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	LastModifiedAt   int64           `json:"last_modified_at"`
+	SeenAt           sql.NullTime    `json:"seen_at"`
+	ArchivedAt       sql.NullTime    `json:"archived_at"`
+}
 
 type Task struct {
 	ID                uuid.UUID     `json:"id"`

@@ -116,3 +116,10 @@
 
 
 [] Review the authentication logic and revamp the method so it can be more secure.
+
+
+
+
+
+
+url("data:image/svg+xml,%3Csvg viewBox='0 0 360 120' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cfilter id='soften' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='0.6' result='blur'/%3E%3CfeMerge%3E%3CfeMergeNode in='blur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3Cfilter id='liquid' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6 0.9' numOctaves='1' seed='4' result='noise'%3E%3Canimate attributeName='baseFrequency' dur='8s' values='0.55 0.85; 0.65 0.95; 0.55 0.85' repeatCount='indefinite'/%3E%3Canimate attributeName='seed' dur='9s' values='2;5;9;2' repeatCount='indefinite'/%3E%3C/feTurbulence%3E%3CfeDisplacementMap in='SourceGraphic' in2='noise' scale='2' xChannelSelector='R' yChannelSelector='G'/%3E%3C/filter%3E%3C/defs%3E%3Crect x='2' y='2' width='356' height='116' rx='20' fill='none' stroke='%23ff6b35' stroke-width='10'/%3E%3Cg filter='url(%23liquid)'%3E%3Crect x='2' y='2' width='356' height='116' rx='20' fill='none' stroke='%23ffc57b' stroke-width='10' stroke-linecap='round' opacity='0.9' stroke-dasharray='26 170' stroke-dashoffset='0' filter='url(%23soften)'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-196' dur='3.2s' repeatCount='indefinite'/%3E%3C/rect%3E%3Crect x='2' y='2' width='356' height='116' rx='20' fill='none' stroke='%23ffc57b' stroke-width='10' stroke-linecap='round' opacity='0.6' stroke-dasharray='14 64' stroke-dashoffset='0' filter='url(%23soften)'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-78' dur='1.9s' repeatCount='indefinite'/%3E%3C/rect%3E%3Crect x='2' y='2' width='356' height='116' rx='20' fill='none' stroke='%23ffc57b' stroke-width='6' stroke-linecap='round' opacity='0.35' stroke-dasharray='10 28' stroke-dashoffset='0' filter='url(%23soften)'%3E%3Canimate attributeName='stroke-dashoffset' from='0' to='-28' dur='2.6s' repeatCount='indefinite'/%3E%3C/rect%3E%3C/g%3E%3C/svg%3E")
