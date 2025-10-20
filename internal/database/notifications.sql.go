@@ -411,6 +411,37 @@ func (q *Queries) GetNotificationsByType(ctx context.Context, arg GetNotificatio
 	return items, nil
 }
 
+const hasNotificationForTaskStage = `-- name: HasNotificationForTaskStage :one
+SELECT EXISTS (
+	SELECT 1
+	FROM notifications
+	WHERE user_id = $1
+	  AND notification_type = $2
+	  AND payload->>'task_id' = $3
+	  AND payload->>'stage' = $4
+	  AND created_at > NOW() - INTERVAL '5 minutes'
+) AS exists
+`
+
+type HasNotificationForTaskStageParams struct {
+	UserID           uuid.UUID       `json:"user_id"`
+	NotificationType string          `json:"notification_type"`
+	Payload          json.RawMessage `json:"payload"`
+	Payload_2        json.RawMessage `json:"payload_2"`
+}
+
+func (q *Queries) HasNotificationForTaskStage(ctx context.Context, arg HasNotificationForTaskStageParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasNotificationForTaskStage,
+		arg.UserID,
+		arg.NotificationType,
+		arg.Payload,
+		arg.Payload_2,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listNotificationsByUser = `-- name: ListNotificationsByUser :many
 SELECT id, user_id, title, description, status, notification_type, payload, priority, expires_at, snoozed_until, action_url, action_text, created_at, updated_at, last_modified_at, seen_at, archived_at
 FROM notifications

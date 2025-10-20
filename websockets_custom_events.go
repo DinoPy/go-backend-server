@@ -272,6 +272,11 @@ func (cfg *config) WSOnTaskCreate(ctx context.Context, c *websocket.Conn, SID uu
 			Int32: *connectionData.Data.ShowBeforeDueTime,
 			Valid: true,
 		}
+	} else {
+		showBeforeDueTime = sql.NullInt32{
+			Int32: 0,
+			Valid: true,
+		}
 	}
 
 	task, err := cfg.DB.CreateTaskWithTiming(ctx, database.CreateTaskParams{
@@ -1414,6 +1419,7 @@ func (cfg *config) broadcastSingleNotification(ctx context.Context, event string
 }
 
 func (cfg *config) DispatchDueNotifications() {
+	log.Printf("DispatchDueNotifications cron job started at %s UTC", time.Now().UTC().Format(time.RFC3339))
 	ctx := context.Background()
 	lastModified := time.Now().UnixMilli()
 
@@ -1436,129 +1442,181 @@ func (cfg *config) DispatchDueNotifications() {
 		}
 	}
 
-	// Handle task visibility changes and due notifications
-	cfg.processTaskDueEvents(ctx)
+	cfg.dispatchTaskVisibility(ctx)
+	cfg.dispatchTaskDueNotifications(ctx, lastModified)
+	log.Printf("DispatchDueNotifications cron job completed at %s UTC", time.Now().UTC().Format(time.RFC3339))
 }
 
-func (cfg *config) processTaskDueEvents(ctx context.Context) {
-	// Get all users who have active connections
-	cfg.WSClientManager.mu.RLock()
-	userIDs := make([]uuid.UUID, 0, len(cfg.WSClientManager.clients))
-	for _, client := range cfg.WSClientManager.clients {
-		userIDs = append(userIDs, client.User.ID)
-	}
-	cfg.WSClientManager.mu.RUnlock()
-
-	for _, userID := range userIDs {
-		cfg.processUserTaskDueEvents(ctx, userID)
-	}
-}
-
-func (cfg *config) processUserTaskDueEvents(ctx context.Context, userID uuid.UUID) {
-	// Check for tasks that should become visible
-	tasksDueForVisibility, err := cfg.DB.GetTasksDueForVisibilityWithTiming(ctx, userID)
+func (cfg *config) dispatchTaskVisibility(ctx context.Context) {
+	log.Println("dispatchTaskVisibility: Starting task visibility check")
+	tasks, err := cfg.DB.GetTasksDueForVisibilityAllWithTiming(ctx)
 	if err != nil {
-		log.Printf("Failed to get tasks due for visibility for user %s: %v", userID, err)
-	} else if len(tasksDueForVisibility) > 0 {
-		cfg.broadcastTaskVisibilityChange(ctx, userID, tasksDueForVisibility)
+		log.Printf("Failed to fetch tasks due for visibility: %v", err)
+		return
+	}
+	log.Printf("dispatchTaskVisibility: Found %d tasks due for visibility", len(tasks))
+	if len(tasks) == 0 {
+		log.Println("dispatchTaskVisibility: No tasks found, returning")
+		return
 	}
 
-	// Check for tasks that need due notifications
-	tasksDueForNotifications, err := cfg.DB.GetTasksDueForNotificationsWithTiming(ctx, userID)
-	if err != nil {
-		log.Printf("Failed to get tasks due for notifications for user %s: %v", userID, err)
-	} else if len(tasksDueForNotifications) > 0 {
-		cfg.createDueNotifications(ctx, userID, tasksDueForNotifications)
-	}
-}
-
-func (cfg *config) broadcastTaskVisibilityChange(ctx context.Context, userID uuid.UUID, tasks []database.Task) {
-	cfg.WSClientManager.BroadcastToSameUser(ctx, "tasks_became_visible", userID, tasks)
-	log.Printf("Broadcasted %d tasks becoming visible for user %s", len(tasks), userID)
-}
-
-func (cfg *config) createDueNotifications(ctx context.Context, userID uuid.UUID, tasks []database.Task) {
-	now := time.Now()
-	lastModified := now.UnixMilli()
-
+	buckets := make(map[uuid.UUID][]database.Task)
 	for _, task := range tasks {
-		// Check if we already sent a notification for this task recently
-		existingNotification, err := cfg.DB.GetNotificationByTaskAndTypeWithTiming(ctx, userID, "due_task", task.ID.String())
-		if err == nil && existingNotification.ID != uuid.Nil {
-			// Skip creating duplicate notification
-			log.Printf("Skipping duplicate notification for task '%s' (already sent recently)", task.Title)
+		buckets[task.UserID] = append(buckets[task.UserID], task)
+	}
+
+	for userID, bucket := range buckets {
+		cfg.WSClientManager.BroadcastToSameUser(ctx, "tasks_became_visible", userID, struct {
+			Tasks []database.Task `json:"tasks"`
+		}{
+			Tasks: bucket,
+		})
+		log.Printf("Broadcasted %d tasks becoming visible for user %s", len(bucket), userID)
+	}
+}
+
+type dueStage struct {
+	ID          string
+	Duration    time.Duration
+	Title       string
+	Description func(task database.Task) string
+	Priority    string
+}
+
+var taskDueStages = []dueStage{
+	{
+		ID:       "48h",
+		Duration: 48 * time.Hour,
+		Title:    "Task due in 48 hours",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 48 hours.", task.Title)
+		},
+		Priority: "low",
+	},
+	{
+		ID:       "24h",
+		Duration: 24 * time.Hour,
+		Title:    "Task due in 24 hours",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 24 hours.", task.Title)
+		},
+		Priority: "low",
+	},
+	{
+		ID:       "12h",
+		Duration: 12 * time.Hour,
+		Title:    "Task due in 12 hours",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 12 hours.", task.Title)
+		},
+		Priority: "normal",
+	},
+	{
+		ID:       "6h",
+		Duration: 6 * time.Hour,
+		Title:    "Task due in 6 hours",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 6 hours.", task.Title)
+		},
+		Priority: "normal",
+	},
+	{
+		ID:       "3h",
+		Duration: 3 * time.Hour,
+		Title:    "Task due in 3 hours",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 3 hours.", task.Title)
+		},
+		Priority: "normal",
+	},
+	{
+		ID:       "1h",
+		Duration: time.Hour,
+		Title:    "Task due in 1 hour",
+		Description: func(task database.Task) string {
+			return fmt.Sprintf("Your task '%s' is due in 1 hour.", task.Title)
+		},
+		Priority: "high",
+	},
+}
+
+func determineDueStage(diff time.Duration) (dueStage, bool) {
+	const triggerWindow = time.Minute
+	for _, stage := range taskDueStages {
+		if diff <= stage.Duration && diff > stage.Duration-triggerWindow {
+			return stage, true
+		}
+	}
+	return dueStage{}, false
+}
+
+func (cfg *config) dispatchTaskDueNotifications(ctx context.Context, lastModified int64) {
+	tasks, err := cfg.DB.GetUpcomingTasksForNotificationsWithTiming(ctx)
+	if err != nil {
+		log.Printf("Failed to fetch upcoming tasks for notifications: %v", err)
+		return
+	}
+	if len(tasks) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, task := range tasks {
+		if !task.DueAt.Valid {
+			continue
+		}
+		diff := task.DueAt.Time.Sub(now)
+		if diff <= 0 {
 			continue
 		}
 
-		// Calculate time until due
-		timeUntilDue := task.DueAt.Time.Sub(now)
-
-		// Determine notification message based on time until due
-		var title, description string
-		var priority string = "normal"
-
-		if timeUntilDue <= 30*time.Minute {
-			title = "Task Due Soon!"
-			description = fmt.Sprintf("Task '%s' is due in 30 minutes or less", task.Title)
-			priority = "urgent"
-		} else if timeUntilDue <= 1*time.Hour {
-			title = "Task Due in 1 Hour"
-			description = fmt.Sprintf("Task '%s' is due in 1 hour", task.Title)
-			priority = "high"
-		} else if timeUntilDue <= 2*time.Hour {
-			title = "Task Due in 2 Hours"
-			description = fmt.Sprintf("Task '%s' is due in 2 hours", task.Title)
-			priority = "high"
-		} else if timeUntilDue <= 3*time.Hour {
-			title = "Task Due in 3 Hours"
-			description = fmt.Sprintf("Task '%s' is due in 3 hours", task.Title)
-			priority = "normal"
-		} else if timeUntilDue <= 6*time.Hour {
-			title = "Task Due in 6 Hours"
-			description = fmt.Sprintf("Task '%s' is due in 6 hours", task.Title)
-			priority = "normal"
-		} else if timeUntilDue <= 12*time.Hour {
-			title = "Task Due in 12 Hours"
-			description = fmt.Sprintf("Task '%s' is due in 12 hours", task.Title)
-			priority = "normal"
-		} else if timeUntilDue <= 24*time.Hour {
-			title = "Task Due Tomorrow"
-			description = fmt.Sprintf("Task '%s' is due in 24 hours", task.Title)
-			priority = "low"
+		stage, ok := determineDueStage(diff)
+		if !ok {
+			continue
 		}
 
-		// Create notification payload
+		hasNotification, err := cfg.DB.HasNotificationForTaskStageWithTiming(ctx, task.UserID, "due_task", task.ID.String(), stage.ID)
+		if err != nil {
+			log.Printf("Failed to check existing notification for task %s stage %s: %v", task.ID, stage.ID, err)
+			continue
+		}
+		if hasNotification {
+			continue
+		}
+
 		payload := map[string]interface{}{
-			"task_id":    task.ID,
-			"task_title": task.Title,
-			"due_at":     task.DueAt.Time,
-			"category":   task.Category,
+			"task_id":        task.ID.String(),
+			"task_title":     task.Title,
+			"due_at":         task.DueAt.Time,
+			"stage":          stage.ID,
+			"due_in_seconds": int(diff.Seconds()),
+			"category":       task.Category,
 		}
 		payloadJSON, _ := json.Marshal(payload)
 
-		// Create notification
 		notification, err := cfg.DB.CreateNotificationWithTiming(ctx, database.CreateNotificationParams{
 			ID:               uuid.New(),
-			UserID:           userID,
-			Title:            title,
-			Description:      sql.NullString{String: description, Valid: true},
+			UserID:           task.UserID,
+			Title:            stage.Title,
+			Description:      sql.NullString{String: stage.Description(task), Valid: true},
 			Status:           "unseen",
 			NotificationType: "due_task",
 			Payload:          payloadJSON,
-			Priority:         priority,
-			ExpiresAt:        sql.NullTime{Time: task.DueAt.Time.Add(24 * time.Hour), Valid: true}, // Expire 24 hours after due date
-			LastModifiedAt:   lastModified,
+			Priority:         stage.Priority,
+			ExpiresAt: sql.NullTime{
+				Time:  task.DueAt.Time.Add(24 * time.Hour),
+				Valid: true,
+			},
+			LastModifiedAt: lastModified,
 		})
-
 		if err != nil {
-			log.Printf("Failed to create due notification for task %s: %v", task.ID, err)
+			log.Printf("Failed to create due notification for task %s stage %s: %v", task.ID, stage.ID, err)
 			continue
 		}
 
-		// Broadcast notification to user
-		cfg.broadcastSingleNotification(ctx, "notification_created", userID, notification)
-		cfg.emitNotificationUnseenCount(ctx, userID)
+		cfg.broadcastSingleNotification(ctx, "notification_created", task.UserID, notification)
+		cfg.emitNotificationUnseenCount(ctx, task.UserID)
 
-		log.Printf("Created due notification for task '%s' (due in %v) for user %s", task.Title, timeUntilDue, userID)
+		log.Printf("Created due notification stage %s for task '%s' (user %s)", stage.ID, task.Title, task.UserID)
 	}
 }

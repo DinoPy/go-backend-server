@@ -42,6 +42,22 @@ func (q *Queries) GetTasksDueForNotificationsWithTiming(ctx context.Context, use
 	return q.GetTasksDueForNotifications(ctx, userID)
 }
 
+func (q *Queries) GetTasksDueForVisibilityAllWithTiming(ctx context.Context) ([]Task, error) {
+	start := time.Now()
+	defer func() {
+		metrics.DatabaseQueryDuration.WithLabelValues("get_tasks_due_for_visibility_all").Observe(time.Since(start).Seconds())
+	}()
+	return q.GetTasksDueForVisibilityAll(ctx)
+}
+
+func (q *Queries) GetUpcomingTasksForNotificationsWithTiming(ctx context.Context) ([]Task, error) {
+	start := time.Now()
+	defer func() {
+		metrics.DatabaseQueryDuration.WithLabelValues("get_upcoming_tasks_for_notifications").Observe(time.Since(start).Seconds())
+	}()
+	return q.GetUpcomingTasksForNotifications(ctx)
+}
+
 func (q *Queries) CreateNotificationWithTiming(ctx context.Context, arg CreateNotificationParams) (Notification, error) {
 	start := time.Now()
 	defer func() {
@@ -163,6 +179,30 @@ func (q *Queries) GetNotificationByIDWithTiming(ctx context.Context, id uuid.UUI
 		metrics.DatabaseQueryDuration.WithLabelValues("get_notification_by_id").Observe(time.Since(start).Seconds())
 	}()
 	return q.GetNotificationByID(ctx, id)
+}
+
+func (q *Queries) HasNotificationForTaskStageWithTiming(ctx context.Context, userID uuid.UUID, notificationType string, taskID string, stage string) (bool, error) {
+	start := time.Now()
+	defer func() {
+		metrics.DatabaseQueryDuration.WithLabelValues("has_notification_for_task_stage").Observe(time.Since(start).Seconds())
+	}()
+
+	// Create payload with task_id and stage
+	payload := map[string]interface{}{
+		"task_id": taskID,
+		"stage":   stage,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return false, err
+	}
+
+	return q.HasNotificationForTaskStage(ctx, HasNotificationForTaskStageParams{
+		UserID:           userID,
+		NotificationType: notificationType,
+		Payload:          payloadJSON,
+		Payload_2:        payloadJSON, // This appears to be a duplicate field in the SQL query
+	})
 }
 
 func (q *Queries) ListNotificationsByUserWithTiming(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error) {

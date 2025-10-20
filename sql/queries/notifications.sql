@@ -178,6 +178,17 @@ WHERE snoozed_until IS NOT NULL
   AND status != 'archived'
 RETURNING *;
 
+-- name: HasNotificationForTaskStage :one
+SELECT EXISTS (
+	SELECT 1
+	FROM notifications
+	WHERE user_id = $1
+	  AND notification_type = $2
+	  AND payload->>'task_id' = $3
+	  AND payload->>'stage' = $4
+	  AND created_at > NOW() - INTERVAL '5 minutes'
+) AS exists;
+
 -- name: GetNotificationByTaskAndType :one
 SELECT *
 FROM notifications

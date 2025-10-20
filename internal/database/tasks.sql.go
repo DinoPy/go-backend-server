@@ -160,69 +160,6 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 	return i, err
 }
 
-const debugTasksWithDueDates = `-- name: DebugTasksWithDueDates :many
-SELECT 
-  id,
-  title,
-  due_at,
-  show_before_due_time,
-  is_completed,
-  NOW() as current_time_utc,
-  NOW() AT TIME ZONE 'Europe/Bucharest' as current_time_bucharest,
-  EXTRACT(EPOCH FROM (due_at - NOW())) as seconds_until_due_utc,
-  EXTRACT(EPOCH FROM (due_at - (NOW() AT TIME ZONE 'Europe/Bucharest'))) as seconds_until_due_bucharest
-FROM tasks
-WHERE user_id = $1 
-  AND is_completed = FALSE
-  AND due_at IS NOT NULL
-ORDER BY due_at ASC
-`
-
-type DebugTasksWithDueDatesRow struct {
-	ID                       uuid.UUID     `json:"id"`
-	Title                    string        `json:"title"`
-	DueAt                    sql.NullTime  `json:"due_at"`
-	ShowBeforeDueTime        sql.NullInt32 `json:"show_before_due_time"`
-	IsCompleted              bool          `json:"is_completed"`
-	CurrentTimeUtc           interface{}   `json:"current_time_utc"`
-	CurrentTimeBucharest     interface{}   `json:"current_time_bucharest"`
-	SecondsUntilDueUtc       string        `json:"seconds_until_due_utc"`
-	SecondsUntilDueBucharest string        `json:"seconds_until_due_bucharest"`
-}
-
-func (q *Queries) DebugTasksWithDueDates(ctx context.Context, userID uuid.UUID) ([]DebugTasksWithDueDatesRow, error) {
-	rows, err := q.db.QueryContext(ctx, debugTasksWithDueDates, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []DebugTasksWithDueDatesRow
-	for rows.Next() {
-		var i DebugTasksWithDueDatesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Title,
-			&i.DueAt,
-			&i.ShowBeforeDueTime,
-			&i.IsCompleted,
-			&i.CurrentTimeUtc,
-			&i.CurrentTimeBucharest,
-			&i.SecondsUntilDueUtc,
-			&i.SecondsUntilDueBucharest,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const deleteTask = `-- name: DeleteTask :exec
 DELETE FROM tasks
 WHERE id = $1
@@ -550,28 +487,8 @@ FROM tasks
 WHERE user_id = $1 
   AND is_completed = FALSE
   AND due_at IS NOT NULL
-  AND (
-    -- 30 minutes before due (urgent)
-    (due_at - NOW() <= INTERVAL '30 minutes' AND due_at - NOW() > INTERVAL '0 minutes')
-    OR
-    -- 1 hour before due (high)
-    (due_at - NOW() <= INTERVAL '1 hour' AND due_at - NOW() > INTERVAL '30 minutes')
-    OR
-    -- 2 hours before due (high)
-    (due_at - NOW() <= INTERVAL '2 hours' AND due_at - NOW() > INTERVAL '1 hour')
-    OR
-    -- 3 hours before due (normal)
-    (due_at - NOW() <= INTERVAL '3 hours' AND due_at - NOW() > INTERVAL '2 hours')
-    OR
-    -- 6 hours before due (normal)
-    (due_at - NOW() <= INTERVAL '6 hours' AND due_at - NOW() > INTERVAL '3 hours')
-    OR
-    -- 12 hours before due (normal)
-    (due_at - NOW() <= INTERVAL '12 hours' AND due_at - NOW() > INTERVAL '6 hours')
-    OR
-    -- 24 hours before due (low)
-    (due_at - NOW() <= INTERVAL '24 hours' AND due_at - NOW() > INTERVAL '12 hours')
-  )
+  AND due_at > NOW() AT TIME ZONE 'UTC'
+  AND due_at <= NOW() AT TIME ZONE 'UTC' + INTERVAL '48 hours'
 ORDER BY due_at ASC
 `
 
@@ -622,13 +539,114 @@ WHERE user_id = $1
   AND is_completed = FALSE
   AND due_at IS NOT NULL
   AND show_before_due_time IS NOT NULL
-  AND due_at - INTERVAL '1 minute' * show_before_due_time <= NOW()
-  AND due_at - INTERVAL '1 minute' * show_before_due_time > NOW() - INTERVAL '1 minute'
+  AND due_at - INTERVAL '1 minute' * show_before_due_time <= NOW() AT TIME ZONE 'UTC'
+  AND due_at - INTERVAL '1 minute' * show_before_due_time > NOW() AT TIME ZONE 'UTC' - INTERVAL '1 minute'
 ORDER BY due_at ASC
 `
 
 func (q *Queries) GetTasksDueForVisibility(ctx context.Context, userID uuid.UUID) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, getTasksDueForVisibility, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.Duration,
+			&i.Category,
+			pq.Array(&i.Tags),
+			&i.ToggledAt,
+			&i.IsActive,
+			&i.IsCompleted,
+			&i.UserID,
+			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTasksDueForVisibilityAll = `-- name: GetTasksDueForVisibilityAll :many
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+FROM tasks
+WHERE is_completed = FALSE
+  AND due_at IS NOT NULL
+  AND show_before_due_time IS NOT NULL
+  AND due_at - INTERVAL '1 minute' * show_before_due_time <= NOW() AT TIME ZONE 'UTC'
+  AND due_at - INTERVAL '1 minute' * show_before_due_time > NOW() AT TIME ZONE 'UTC' - INTERVAL '1 minute'
+ORDER BY due_at ASC
+`
+
+func (q *Queries) GetTasksDueForVisibilityAll(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getTasksDueForVisibilityAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.Duration,
+			&i.Category,
+			pq.Array(&i.Tags),
+			&i.ToggledAt,
+			&i.IsActive,
+			&i.IsCompleted,
+			&i.UserID,
+			&i.LastModifiedAt,
+			&i.Priority,
+			&i.DueAt,
+			&i.ShowBeforeDueTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUpcomingTasksForNotifications = `-- name: GetUpcomingTasksForNotifications :many
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+FROM tasks
+WHERE is_completed = FALSE
+  AND due_at IS NOT NULL
+  AND due_at > NOW() AT TIME ZONE 'UTC'
+  AND due_at <= NOW() AT TIME ZONE 'UTC' + INTERVAL '48 hours'
+ORDER BY due_at ASC
+`
+
+func (q *Queries) GetUpcomingTasksForNotifications(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getUpcomingTasksForNotifications)
 	if err != nil {
 		return nil, err
 	}
