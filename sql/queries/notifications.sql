@@ -157,8 +157,8 @@ RETURNING *;
 -- name: SnoozeNotification :one
 UPDATE notifications
 SET snoozed_until = $2,
-	status = 'unseen',
-	seen_at = NULL,
+	status = 'seen',  -- Changed from 'unseen' to 'seen'
+	seen_at = COALESCE(seen_at, NOW()),  -- Preserve existing seen_at or set to now
 	updated_at = NOW(),
 	last_modified_at = $4
 WHERE id = $1

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dinopy/taskbar2_server/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,12 +19,14 @@ import (
 )
 
 type config struct {
-	DB              *database.Queries
-	DBPool          *sql.DB
-	PORT            string
-	WSCfg           WebSocketCfg
-	WSClientManager ClientManager
-	Metrics         *prometheus.Registry
+	DB                *database.Queries
+	DBPool            *sql.DB
+	PORT              string
+	WSCfg             WebSocketCfg
+	WSClientManager   ClientManager
+	Metrics           *prometheus.Registry
+	ScheduleService   *ScheduleService
+	DispatcherService *DispatcherService
 }
 
 type WebSocketCfg struct {
@@ -62,6 +66,7 @@ func main() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	dbQuery := database.New(db)
+
 	cfg := config{
 		DB:     dbQuery,
 		DBPool: db,
@@ -73,6 +78,24 @@ func main() {
 		WSClientManager: *NewClientManager(),
 		Metrics:         prometheus.NewRegistry(),
 	}
+
+	// Initialize services after config is created
+	scheduleService := NewScheduleService(dbQuery, 60, func(userID uuid.UUID, task database.Task) error {
+		// Send task creation event via WebSocket to user's connected clients
+		log.Printf("Main: Broadcasting new_task_created event for task %s to user %s", task.ID, userID)
+		cfg.WSClientManager.BroadcastToSameUser(context.Background(), "new_task_created", userID, task)
+		return nil
+	})
+	dispatcherService := NewDispatcherService(dbQuery, 100, func(userID uuid.UUID, notification database.Notification) error {
+		// Send notification via WebSocket to user's connected clients
+		cfg.WSClientManager.BroadcastToSameUser(context.Background(), "notification_created", userID, notification)
+		return nil
+	})
+	cleanupService := NewCleanupService(dbQuery)
+
+	// Update config with services
+	cfg.ScheduleService = scheduleService
+	cfg.DispatcherService = dispatcherService
 
 	// set up router
 	mux := http.NewServeMux()
@@ -100,6 +123,30 @@ func main() {
 	cron := cron.New(cron.WithLocation(location))
 	cron.AddFunc("59 23 * * *", cfg.WSOnMidnightTaskRefresh)
 	cron.AddFunc("@every 1m", cfg.DispatchDueNotifications)
+
+	// Add planner and dispatcher loops
+	cron.AddFunc("@every 1m", func() {
+		ctx := context.Background()
+		if err := cfg.ScheduleService.Tick(ctx); err != nil {
+			log.Printf("ScheduleService tick failed: %v", err)
+		}
+	})
+
+	cron.AddFunc("@every 1m", func() {
+		ctx := context.Background()
+		if err := cfg.DispatcherService.Tick(ctx); err != nil {
+			log.Printf("DispatcherService tick failed: %v", err)
+		}
+	})
+
+	// Add daily cleanup job (runs at 3 AM)
+	cron.AddFunc("0 3 * * *", func() {
+		ctx := context.Background()
+		if err := cleanupService.CleanupOldOccurrences(ctx); err != nil {
+			log.Printf("CleanupService cleanup failed: %v", err)
+		}
+	})
+
 	cron.Start()
 
 	log.Println("Serving on http://localhost:" + cfg.PORT + "...")

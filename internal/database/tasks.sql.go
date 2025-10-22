@@ -23,7 +23,7 @@ SET
 	completed_at = $3,
 	last_modified_at = $4
 WHERE id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from
 `
 
 type CompleteTaskParams struct {
@@ -58,6 +58,7 @@ func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (Tas
 		&i.Priority,
 		&i.DueAt,
 		&i.ShowBeforeDueTime,
+		&i.VisibleFrom,
 	)
 	return i, err
 }
@@ -97,7 +98,7 @@ INSERT INTO tasks (
 	$14,
 	$15,
 	$16
-) RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+) RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from
 `
 
 type CreateTaskParams struct {
@@ -156,6 +157,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.Priority,
 		&i.DueAt,
 		&i.ShowBeforeDueTime,
+		&i.VisibleFrom,
 	)
 	return i, err
 }
@@ -182,7 +184,7 @@ SET
 	due_at = $8,
 	show_before_due_time = $9
 WHERE id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from
 `
 
 type EditTaskParams struct {
@@ -227,12 +229,13 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (Task, error
 		&i.Priority,
 		&i.DueAt,
 		&i.ShowBeforeDueTime,
+		&i.VisibleFrom,
 	)
 	return i, err
 }
 
 const getActiveTaskByUUID = `-- name: GetActiveTaskByUUID :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE user_id = $1 AND is_completed = FALSE
 ORDER BY created_at ASC
@@ -264,6 +267,7 @@ func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -279,7 +283,7 @@ func (q *Queries) GetActiveTaskByUUID(ctx context.Context, userID uuid.UUID) ([]
 }
 
 const getCompletedTasksByUUID = `-- name: GetCompletedTasksByUUID :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE user_id = $1
 	AND is_completed = TRUE
@@ -348,6 +352,7 @@ func (q *Queries) GetCompletedTasksByUUID(ctx context.Context, arg GetCompletedT
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -363,7 +368,7 @@ func (q *Queries) GetCompletedTasksByUUID(ctx context.Context, arg GetCompletedT
 }
 
 const getNonCompletedTasks = `-- name: GetNonCompletedTasks :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from
 FROM tasks
 WHERE is_completed = FALSE
 ORDER BY user_id
@@ -395,6 +400,7 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -410,7 +416,7 @@ func (q *Queries) GetNonCompletedTasks(ctx context.Context) ([]Task, error) {
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time FROM tasks WHERE id = $1
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from FROM tasks WHERE id = $1
 `
 
 func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
@@ -433,12 +439,13 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.Priority,
 		&i.DueAt,
 		&i.ShowBeforeDueTime,
+		&i.VisibleFrom,
 	)
 	return i, err
 }
 
 const getTasks = `-- name: GetTasks :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time FROM tasks ORDER BY created_at ASC
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from FROM tasks ORDER BY created_at ASC
 `
 
 func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {
@@ -467,6 +474,7 @@ func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -482,7 +490,7 @@ func (q *Queries) GetTasks(ctx context.Context) ([]Task, error) {
 }
 
 const getTasksDueForNotifications = `-- name: GetTasksDueForNotifications :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE user_id = $1 
   AND is_completed = FALSE
@@ -518,6 +526,7 @@ func (q *Queries) GetTasksDueForNotifications(ctx context.Context, userID uuid.U
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -533,7 +542,7 @@ func (q *Queries) GetTasksDueForNotifications(ctx context.Context, userID uuid.U
 }
 
 const getTasksDueForVisibility = `-- name: GetTasksDueForVisibility :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE user_id = $1 
   AND is_completed = FALSE
@@ -570,6 +579,7 @@ func (q *Queries) GetTasksDueForVisibility(ctx context.Context, userID uuid.UUID
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -585,7 +595,7 @@ func (q *Queries) GetTasksDueForVisibility(ctx context.Context, userID uuid.UUID
 }
 
 const getTasksDueForVisibilityAll = `-- name: GetTasksDueForVisibilityAll :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE is_completed = FALSE
   AND due_at IS NOT NULL
@@ -621,6 +631,7 @@ func (q *Queries) GetTasksDueForVisibilityAll(ctx context.Context) ([]Task, erro
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -636,7 +647,7 @@ func (q *Queries) GetTasksDueForVisibilityAll(ctx context.Context) ([]Task, erro
 }
 
 const getUpcomingTasksForNotifications = `-- name: GetUpcomingTasksForNotifications :many
-SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time 
+SELECT id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from 
 FROM tasks
 WHERE is_completed = FALSE
   AND due_at IS NOT NULL
@@ -671,6 +682,7 @@ func (q *Queries) GetUpcomingTasksForNotifications(ctx context.Context) ([]Task,
 			&i.Priority,
 			&i.DueAt,
 			&i.ShowBeforeDueTime,
+			&i.VisibleFrom,
 		); err != nil {
 			return nil, err
 		}
@@ -694,7 +706,7 @@ SET
 	last_modified_at = $5
 WHERE 
 	id = $1
-RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time
+RETURNING id, title, description, created_at, completed_at, duration, category, tags, toggled_at, is_active, is_completed, user_id, last_modified_at, priority, due_at, show_before_due_time, visible_from
 `
 
 type ToggleTaskParams struct {
@@ -731,6 +743,7 @@ func (q *Queries) ToggleTask(ctx context.Context, arg ToggleTaskParams) (Task, e
 		&i.Priority,
 		&i.DueAt,
 		&i.ShowBeforeDueTime,
+		&i.VisibleFrom,
 	)
 	return i, err
 }

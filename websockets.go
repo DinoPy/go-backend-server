@@ -299,6 +299,36 @@ func (cfg *config) WebSocketsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		case "taskbar-update":
 			cfg.WSClientManager.BroadcastToSameUser(ctx, "taskbar-ack", cfg.WSClientManager.clients[SID].User.ID, "From "+SID.String())
+		case "schedule_create":
+			err := cfg.WSOnScheduleCreate(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in WSOnScheduleCreate function:", err)
+				return
+			}
+		case "schedule_edit":
+			err := cfg.WSOnScheduleEdit(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in WSOnScheduleEdit function:", err)
+				return
+			}
+		case "schedule_delete":
+			err := cfg.WSOnScheduleDelete(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in WSOnScheduleDelete function:", err)
+				return
+			}
+		case "schedule_list":
+			err := cfg.WSOnScheduleList(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in WSOnScheduleList function:", err)
+				return
+			}
+		case "reminder_submit":
+			err := cfg.WSOnReminderSubmit(ctx, c, SID, data)
+			if err != nil {
+				log.Println("Error occurred in WSOnReminderSubmit function:", err)
+				return
+			}
 		default:
 			log.Println("Unknown event:", msg.Event)
 			pretty, err := prettify(string(data))

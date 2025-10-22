@@ -32,6 +32,44 @@ type Notification struct {
 	ArchivedAt       sql.NullTime    `json:"archived_at"`
 }
 
+type NotificationJob struct {
+	ID            uuid.UUID       `json:"id"`
+	UserID        uuid.UUID       `json:"user_id"`
+	ScheduleID    uuid.NullUUID   `json:"schedule_id"`
+	OccurrenceID  uuid.UUID       `json:"occurrence_id"`
+	OffsetMinutes int32           `json:"offset_minutes"`
+	PlannedSendAt time.Time       `json:"planned_send_at"`
+	SentAt        sql.NullTime    `json:"sent_at"`
+	CanceledAt    sql.NullTime    `json:"canceled_at"`
+	Payload       json.RawMessage `json:"payload"`
+}
+
+type Occurrence struct {
+	ID         uuid.UUID `json:"id"`
+	ScheduleID uuid.UUID `json:"schedule_id"`
+	OccursAt   time.Time `json:"occurs_at"`
+	Rev        int32     `json:"rev"`
+}
+
+type Schedule struct {
+	ID                    uuid.UUID      `json:"id"`
+	UserID                uuid.UUID      `json:"user_id"`
+	Kind                  string         `json:"kind"`
+	Title                 string         `json:"title"`
+	Tz                    string         `json:"tz"`
+	StartLocal            time.Time      `json:"start_local"`
+	Rrule                 sql.NullString `json:"rrule"`
+	UntilLocal            sql.NullTime   `json:"until_local"`
+	ShowBeforeMinutes     sql.NullInt32  `json:"show_before_minutes"`
+	NotifyOffsetsMin      []int32        `json:"notify_offsets_min"`
+	MutedOffsetsMin       []int32        `json:"muted_offsets_min"`
+	Active                bool           `json:"active"`
+	Rev                   int32          `json:"rev"`
+	LastMaterializedUntil sql.NullTime   `json:"last_materialized_until"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
+}
+
 type Task struct {
 	ID                uuid.UUID     `json:"id"`
 	Title             string        `json:"title"`
@@ -49,6 +87,12 @@ type Task struct {
 	Priority          sql.NullInt32 `json:"priority"`
 	DueAt             sql.NullTime  `json:"due_at"`
 	ShowBeforeDueTime sql.NullInt32 `json:"show_before_due_time"`
+	VisibleFrom       sql.NullTime  `json:"visible_from"`
+}
+
+type TaskLink struct {
+	OccurrenceID uuid.UUID `json:"occurrence_id"`
+	TaskID       uuid.UUID `json:"task_id"`
 }
 
 type User struct {

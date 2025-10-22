@@ -174,6 +174,13 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 		unseenCount = unseenCountValue
 	}
 
+	// Fetch user's schedules
+	schedules, err := cfg.DB.GetSchedulesByUser(ctx, user.ID)
+	if err != nil {
+		logDBError("Failed to load schedules for user "+user.ID.String(), err)
+		return sendError(c, ErrorDatabaseError, "Failed to load schedules", 500)
+	}
+
 	var category string
 	var keyCommands string
 
@@ -197,6 +204,7 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 		Tasks                  []database.Task         `json:"tasks"`
 		Notifications          []database.Notification `json:"notifications"`
 		NotificationsUnseenCnt int64                   `json:"notifications_unseen_count"`
+		Schedules              []database.Schedule     `json:"schedules"`
 	}
 
 	cfg.WSClientManager.SendToClient(ctx, "connected", SID, finalUser{
@@ -212,6 +220,7 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 		Tasks:                  tasks,
 		Notifications:          notifications,
 		NotificationsUnseenCnt: unseenCount,
+		Schedules:              schedules,
 	})
 	return nil
 }
@@ -1443,7 +1452,8 @@ func (cfg *config) DispatchDueNotifications() {
 	}
 
 	cfg.dispatchTaskVisibility(ctx)
-	cfg.dispatchTaskDueNotifications(ctx, lastModified)
+	// Disabled old notification system - now using new scheduler system
+	// cfg.dispatchTaskDueNotifications(ctx, lastModified)
 	log.Printf("DispatchDueNotifications cron job completed at %s UTC", time.Now().UTC().Format(time.RFC3339))
 }
 
@@ -1619,4 +1629,468 @@ func (cfg *config) dispatchTaskDueNotifications(ctx context.Context, lastModifie
 
 		log.Printf("Created due notification stage %s for task '%s' (user %s)", stage.ID, task.Title, task.UserID)
 	}
+}
+
+// Schedule Management WebSocket Event Handlers
+
+func (cfg *config) WSOnScheduleCreate(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("schedule_create").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	type scheduleCreateRequest struct {
+		Kind              string     `json:"kind"`
+		Title             string     `json:"title"`
+		Tz                string     `json:"tz"`
+		StartLocal        time.Time  `json:"start_local"`
+		Rrule             *string    `json:"rrule"`
+		UntilLocal        *time.Time `json:"until_local"`
+		ShowBeforeMinutes *int32     `json:"show_before_minutes"`
+		NotifyOffsetsMin  []int32    `json:"notify_offsets_min"`
+		MutedOffsetsMin   []int32    `json:"muted_offsets_min"`
+	}
+
+	var payload struct {
+		Data scheduleCreateRequest `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return sendError(c, "invalid_data", "Invalid schedule data", 400)
+	}
+
+	// Validate required fields
+	if payload.Data.Kind == "" || payload.Data.Title == "" || payload.Data.Tz == "" {
+		return sendError(c, "invalid_data", "Kind, title, and timezone are required", 400)
+	}
+
+	// Validate kind
+	if payload.Data.Kind != "task" && payload.Data.Kind != "reminder" {
+		return sendError(c, "invalid_data", "Kind must be 'task' or 'reminder'", 400)
+	}
+
+	// Prepare parameters
+	var rrule sql.NullString
+	if payload.Data.Rrule != nil {
+		rrule = sql.NullString{String: *payload.Data.Rrule, Valid: true}
+	}
+
+	var untilLocal sql.NullTime
+	if payload.Data.UntilLocal != nil {
+		untilLocal = sql.NullTime{Time: *payload.Data.UntilLocal, Valid: true}
+	}
+
+	var showBeforeMinutes sql.NullInt32
+	if payload.Data.ShowBeforeMinutes != nil {
+		showBeforeMinutes = sql.NullInt32{Int32: *payload.Data.ShowBeforeMinutes, Valid: true}
+	}
+
+	// Create schedule
+	schedule, err := cfg.DB.CreateSchedule(ctx, database.CreateScheduleParams{
+		UserID:     client.User.ID,
+		Kind:       payload.Data.Kind,
+		Title:      payload.Data.Title,
+		Tz:         payload.Data.Tz,
+		StartLocal: payload.Data.StartLocal,
+		Rrule:      rrule,
+		UntilLocal: untilLocal,
+		Column8:    showBeforeMinutes,
+		Column9:    payload.Data.NotifyOffsetsMin,
+		Column10:   payload.Data.MutedOffsetsMin,
+	})
+	if err != nil {
+		log.Printf("Failed to create schedule: %v", err)
+		return sendError(c, ErrorDatabaseError, "Failed to create schedule", 500)
+	}
+
+	// Send success response
+	cfg.WSClientManager.SendToClient(ctx, "schedule_created", SID, schedule)
+	return nil
+}
+
+func (cfg *config) WSOnScheduleEdit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("schedule_edit").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	type scheduleEditRequest struct {
+		ID                uuid.UUID  `json:"id"`
+		Title             string     `json:"title"`
+		Tz                string     `json:"tz"`
+		StartLocal        time.Time  `json:"start_local"`
+		Rrule             *string    `json:"rrule"`
+		UntilLocal        *time.Time `json:"until_local"`
+		ShowBeforeMinutes *int32     `json:"show_before_minutes"`
+		NotifyOffsetsMin  []int32    `json:"notify_offsets_min"`
+		MutedOffsetsMin   []int32    `json:"muted_offsets_min"`
+	}
+
+	var payload struct {
+		Data scheduleEditRequest `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return sendError(c, "invalid_data", "Invalid schedule data", 400)
+	}
+
+	// Validate schedule ID
+	if payload.Data.ID == uuid.Nil {
+		return sendError(c, "invalid_data", "Schedule ID is required", 400)
+	}
+
+	// Check if schedule exists and belongs to user
+	existingSchedule, err := cfg.DB.GetScheduleByID(ctx, payload.Data.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return sendError(c, "not_found", "Schedule not found", 404)
+		}
+		return sendError(c, ErrorDatabaseError, "Database error", 500)
+	}
+
+	if existingSchedule.UserID != client.User.ID {
+		return sendError(c, "unauthorized", "Schedule does not belong to user", 403)
+	}
+
+	// Cancel future jobs and delete future occurrences
+	if err := cfg.DB.CancelFutureJobsForSchedule(ctx, uuid.NullUUID{UUID: payload.Data.ID, Valid: true}); err != nil {
+		log.Printf("Failed to cancel future jobs: %v", err)
+	}
+
+	if err := cfg.DB.DeleteFutureOccurrencesForSchedule(ctx, payload.Data.ID); err != nil {
+		log.Printf("Failed to delete future occurrences: %v", err)
+	}
+
+	// Increment revision
+	if err := cfg.DB.IncrementScheduleRev(ctx, payload.Data.ID); err != nil {
+		log.Printf("Failed to increment schedule revision: %v", err)
+	}
+
+	// Update schedule
+	schedule, err := cfg.DB.UpdateSchedule(ctx, database.UpdateScheduleParams{
+		ID:                payload.Data.ID,
+		Title:             payload.Data.Title,
+		Tz:                payload.Data.Tz,
+		StartLocal:        payload.Data.StartLocal,
+		Rrule:             sql.NullString{String: *payload.Data.Rrule, Valid: payload.Data.Rrule != nil},
+		UntilLocal:        sql.NullTime{Time: *payload.Data.UntilLocal, Valid: payload.Data.UntilLocal != nil},
+		ShowBeforeMinutes: sql.NullInt32{Int32: *payload.Data.ShowBeforeMinutes, Valid: payload.Data.ShowBeforeMinutes != nil},
+		NotifyOffsetsMin:  payload.Data.NotifyOffsetsMin,
+		MutedOffsetsMin:   payload.Data.MutedOffsetsMin,
+	})
+	if err != nil {
+		log.Printf("Failed to update schedule: %v", err)
+		return sendError(c, ErrorDatabaseError, "Failed to update schedule", 500)
+	}
+
+	// Send success response
+	cfg.WSClientManager.SendToClient(ctx, "schedule_updated", SID, schedule)
+	return nil
+}
+
+func (cfg *config) WSOnScheduleDelete(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("schedule_delete").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	type scheduleDeleteRequest struct {
+		ID uuid.UUID `json:"id"`
+	}
+
+	var payload struct {
+		Data scheduleDeleteRequest `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return sendError(c, "invalid_data", "Invalid schedule data", 400)
+	}
+
+	// Validate schedule ID
+	if payload.Data.ID == uuid.Nil {
+		return sendError(c, "invalid_data", "Schedule ID is required", 400)
+	}
+
+	// Check if schedule exists and belongs to user
+	existingSchedule, err := cfg.DB.GetScheduleByID(ctx, payload.Data.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return sendError(c, "not_found", "Schedule not found", 404)
+		}
+		return sendError(c, ErrorDatabaseError, "Database error", 500)
+	}
+
+	if existingSchedule.UserID != client.User.ID {
+		return sendError(c, "unauthorized", "Schedule does not belong to user", 403)
+	}
+
+	// Cancel future jobs
+	if err := cfg.DB.CancelFutureJobsForSchedule(ctx, uuid.NullUUID{UUID: payload.Data.ID, Valid: true}); err != nil {
+		log.Printf("Failed to cancel future jobs: %v", err)
+	}
+
+	// Delete future occurrences (this will cascade to notification jobs and task_links)
+	if err := cfg.DB.DeleteFutureOccurrencesForSchedule(ctx, payload.Data.ID); err != nil {
+		log.Printf("Failed to delete future occurrences: %v", err)
+	}
+
+	// Actually delete the schedule (this will cascade to all occurrences, notification jobs, and task_links)
+	if err := cfg.DB.DeleteSchedule(ctx, payload.Data.ID); err != nil {
+		log.Printf("Failed to delete schedule: %v", err)
+		return sendError(c, ErrorDatabaseError, "Failed to delete schedule", 500)
+	}
+
+	// Send success response
+	cfg.WSClientManager.SendToClient(ctx, "schedule_deleted", SID, struct {
+		ID uuid.UUID `json:"id"`
+	}{
+		ID: payload.Data.ID,
+	})
+	return nil
+}
+
+func (cfg *config) WSOnScheduleList(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	start := time.Now()
+	defer func() {
+		metrics.WebSocketEventDuration.WithLabelValues("schedule_list").Observe(time.Since(start).Seconds())
+	}()
+
+	client, ok := cfg.getClientBySID(SID)
+	if !ok {
+		return fmt.Errorf("client not found for SID %s", SID)
+	}
+
+	// Get user's schedules
+	schedules, err := cfg.DB.GetSchedulesByUser(ctx, client.User.ID)
+	if err != nil {
+		log.Printf("Failed to get schedules for user: %v", err)
+		return sendError(c, ErrorDatabaseError, "Failed to get schedules", 500)
+	}
+
+	// Send schedules list
+	cfg.WSClientManager.SendToClient(ctx, "schedules_list", SID, struct {
+		Schedules []database.Schedule `json:"schedules"`
+	}{
+		Schedules: schedules,
+	})
+	return nil
+}
+
+func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SID uuid.UUID, data []byte) error {
+	// Get client
+	client, exists := cfg.WSClientManager.clients[SID]
+	if !exists {
+		return fmt.Errorf("client not found")
+	}
+
+	// Parse payload
+	var payload struct {
+		Event string `json:"event"`
+		Data  struct {
+			Title         string `json:"title"`
+			Kind          string `json:"kind"`
+			ScheduleInput string `json:"scheduleInput"`
+			Schedule      struct {
+				Instant *struct {
+					Label string `json:"label"`
+					ISO   string `json:"iso"`
+				} `json:"instant"`
+				Recurrence *struct {
+					Text  string   `json:"text"`
+					Rule  string   `json:"rule"`
+					Start string   `json:"start"`
+					Next  []string `json:"next"`
+				} `json:"recurrence"`
+			} `json:"schedule"`
+			ShowBeforeMinutes *int32 `json:"show_before_minutes"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal payload: %v", err)
+	}
+
+	// Validate required fields
+	if payload.Data.Title == "" {
+		return fmt.Errorf("title is required")
+	}
+	if payload.Data.Kind != "task" && payload.Data.Kind != "reminder" {
+		return fmt.Errorf("kind must be 'task' or 'reminder'")
+	}
+	if payload.Data.Schedule.Instant == nil && payload.Data.Schedule.Recurrence == nil {
+		return fmt.Errorf("either instant or recurrence must be provided")
+	}
+	if payload.Data.ShowBeforeMinutes == nil {
+		return fmt.Errorf("show_before_minutes is required")
+	}
+
+	// Determine timezone (use client's timezone or default to UTC)
+	tz := "UTC" // You might want to get this from client data or user preferences
+
+	var startLocal time.Time
+	var rrule sql.NullString
+	var untilLocal sql.NullTime
+
+	if payload.Data.Schedule.Instant != nil {
+		// One-off schedule
+		startTime, err := time.Parse(time.RFC3339, payload.Data.Schedule.Instant.ISO)
+		if err != nil {
+			return fmt.Errorf("invalid instant ISO format: %v", err)
+		}
+		startLocal = startTime
+		// rrule remains NULL for one-off
+	} else if payload.Data.Schedule.Recurrence != nil {
+		// Recurring schedule
+		startTime, err := time.Parse(time.RFC3339, payload.Data.Schedule.Recurrence.Start)
+		if err != nil {
+			return fmt.Errorf("invalid recurrence start format: %v", err)
+		}
+		startLocal = startTime
+		rrule = sql.NullString{String: payload.Data.Schedule.Recurrence.Rule, Valid: true}
+		// untilLocal remains NULL (no end date specified)
+	}
+
+	// Create schedule
+	schedule, err := cfg.DB.CreateSchedule(ctx, database.CreateScheduleParams{
+		UserID:     client.User.ID,
+		Kind:       payload.Data.Kind,
+		Title:      payload.Data.Title,
+		Tz:         tz,
+		StartLocal: startLocal,
+		Rrule:      rrule,
+		UntilLocal: untilLocal,
+		Column8:    payload.Data.ShowBeforeMinutes, // show_before_minutes
+		Column9:    nil,                            // notify_offsets_min - will use default '{2880,1440,720,360,180}'
+		Column10:   nil,                            // muted_offsets_min - will use default '{}'
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create schedule: %v", err)
+	}
+
+	// For immediate reminders, process them right away instead of waiting for cron
+	if payload.Data.Schedule.Instant != nil {
+		// Parse the instant time
+		instantTime, err := time.Parse(time.RFC3339, payload.Data.Schedule.Instant.ISO)
+		if err == nil {
+			// If reminder is due within the next 2 minutes, process it immediately
+			if instantTime.Sub(time.Now()) <= 2*time.Minute {
+				log.Printf("Processing immediate reminder for schedule %s", schedule.ID)
+				// Create occurrence and notification jobs immediately
+				if err := cfg.processImmediateReminder(ctx, schedule, instantTime); err != nil {
+					log.Printf("Failed to process immediate reminder: %v", err)
+				}
+			}
+		}
+	}
+
+	// Send success response
+	return cfg.WSClientManager.SendToClient(ctx, "reminder_submit_response", SID, struct {
+		Success  bool              `json:"success"`
+		Schedule database.Schedule `json:"schedule"`
+	}{
+		Success:  true,
+		Schedule: schedule,
+	})
+}
+
+func (cfg *config) processImmediateReminder(ctx context.Context, schedule database.Schedule, instantTime time.Time) error {
+	// Create occurrence for the immediate reminder
+	occurrence, err := cfg.DB.UpsertOccurrence(ctx, database.UpsertOccurrenceParams{
+		ScheduleID: schedule.ID,
+		OccursAt:   instantTime,
+		Rev:        schedule.Rev,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create occurrence: %v", err)
+	}
+
+	// Create task if kind is 'task'
+	if schedule.Kind == "task" {
+		// Determine if this should have a due date based on schedule frequency
+		var dueAt sql.NullTime
+		if schedule.Rrule.Valid {
+			freq := detectFrequency(schedule.Rrule.String)
+			if freq == "minutely" || freq == "hourly" {
+				dueAt = sql.NullTime{Valid: false}
+			} else {
+				dueAt = sql.NullTime{Time: instantTime, Valid: true}
+			}
+		} else {
+			// One-off tasks keep their due date
+			dueAt = sql.NullTime{Time: instantTime, Valid: true}
+		}
+
+		task, err := cfg.DB.CreateTask(ctx, database.CreateTaskParams{
+			ID:                uuid.New(),
+			Title:             schedule.Title,
+			Description:       "", // Could be enhanced later
+			CreatedAt:         instantTime,
+			CompletedAt:       sql.NullTime{Valid: false},
+			Duration:          "00:00:00",
+			Category:          "Life", // Default category for scheduled tasks
+			Tags:              []string{},
+			ToggledAt:         sql.NullInt64{Valid: false},
+			IsActive:          false,
+			IsCompleted:       false,
+			UserID:            schedule.UserID,
+			LastModifiedAt:    time.Now().UnixMilli(),
+			Priority:          sql.NullInt32{Valid: false},
+			DueAt:             dueAt,
+			ShowBeforeDueTime: schedule.ShowBeforeMinutes,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create task: %v", err)
+		}
+
+		// Link task to occurrence
+		err = cfg.DB.LinkTaskToOccurrence(ctx, database.LinkTaskToOccurrenceParams{
+			OccurrenceID: occurrence.ID,
+			TaskID:       task.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to link task to occurrence: %v", err)
+		}
+
+		log.Printf("Created immediate task for schedule %s at %v", schedule.ID, instantTime)
+	}
+
+	// Create notification job for immediate reminder (offset 0)
+	payload := map[string]interface{}{
+		"schedule_id":    schedule.ID.String(),
+		"occurrence_id":  occurrence.ID.String(),
+		"offset_minutes": 0,
+		"title":          schedule.Title,
+		"kind":           schedule.Kind,
+	}
+	payloadJSON, _ := json.Marshal(payload)
+
+	err = cfg.DB.UpsertNotificationJob(ctx, database.UpsertNotificationJobParams{
+		UserID:        schedule.UserID,
+		ScheduleID:    uuid.NullUUID{UUID: schedule.ID, Valid: true},
+		OccurrenceID:  occurrence.ID,
+		OffsetMinutes: 0,
+		PlannedSendAt: instantTime,
+		Payload:       payloadJSON,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create notification job: %v", err)
+	}
+
+	log.Printf("Created immediate reminder notification job for schedule %s at %v", schedule.ID, instantTime)
+	return nil
 }
