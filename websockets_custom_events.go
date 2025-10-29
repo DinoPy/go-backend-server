@@ -138,9 +138,9 @@ func (cfg *config) WSOnConnect(ctx context.Context, c *websocket.Conn, SID uuid.
 
 	notificationsParams := database.ListNotificationsByUserParams{
 		UserID:            user.ID,
-		Statuses:          []string{"unseen", "seen"},
+		Statuses:          []string{"unseen"},
 		OffsetVal:         sql.NullInt32{Int32: 0, Valid: true},
-		LimitVal:          sql.NullInt32{Int32: 10, Valid: true},
+		LimitVal:          sql.NullInt32{Int32: 5000, Valid: true},
 		IncludeSnoozed:    sql.NullBool{Valid: true, Bool: false},
 		ExpiredOnly:       sql.NullBool{Valid: true, Bool: false},
 		NotificationTypes: nil,
@@ -1654,6 +1654,7 @@ func (cfg *config) WSOnScheduleCreate(ctx context.Context, c *websocket.Conn, SI
 		ShowBeforeMinutes *int32     `json:"show_before_minutes"`
 		NotifyOffsetsMin  []int32    `json:"notify_offsets_min"`
 		MutedOffsetsMin   []int32    `json:"muted_offsets_min"`
+		Category          *string    `json:"category"`
 	}
 
 	var payload struct {
@@ -1702,6 +1703,7 @@ func (cfg *config) WSOnScheduleCreate(ctx context.Context, c *websocket.Conn, SI
 		Column8:    showBeforeMinutes,
 		Column9:    payload.Data.NotifyOffsetsMin,
 		Column10:   payload.Data.MutedOffsetsMin,
+		Column11:   payload.Data.Category,
 	})
 	if err != nil {
 		log.Printf("Failed to create schedule: %v", err)
@@ -1734,6 +1736,7 @@ func (cfg *config) WSOnScheduleEdit(ctx context.Context, c *websocket.Conn, SID 
 		ShowBeforeMinutes *int32     `json:"show_before_minutes"`
 		NotifyOffsetsMin  []int32    `json:"notify_offsets_min"`
 		MutedOffsetsMin   []int32    `json:"muted_offsets_min"`
+		Category          *string    `json:"category"`
 	}
 
 	var payload struct {
@@ -1776,6 +1779,12 @@ func (cfg *config) WSOnScheduleEdit(ctx context.Context, c *websocket.Conn, SID 
 		log.Printf("Failed to increment schedule revision: %v", err)
 	}
 
+	// Prepare category
+	var category sql.NullString
+	if payload.Data.Category != nil {
+		category = sql.NullString{String: *payload.Data.Category, Valid: true}
+	}
+
 	// Update schedule
 	schedule, err := cfg.DB.UpdateSchedule(ctx, database.UpdateScheduleParams{
 		ID:                payload.Data.ID,
@@ -1787,6 +1796,7 @@ func (cfg *config) WSOnScheduleEdit(ctx context.Context, c *websocket.Conn, SID 
 		ShowBeforeMinutes: sql.NullInt32{Int32: *payload.Data.ShowBeforeMinutes, Valid: payload.Data.ShowBeforeMinutes != nil},
 		NotifyOffsetsMin:  payload.Data.NotifyOffsetsMin,
 		MutedOffsetsMin:   payload.Data.MutedOffsetsMin,
+		Category:          category,
 	})
 	if err != nil {
 		log.Printf("Failed to update schedule: %v", err)
@@ -1917,7 +1927,8 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 					Next  []string `json:"next"`
 				} `json:"recurrence"`
 			} `json:"schedule"`
-			ShowBeforeMinutes *int32 `json:"show_before_minutes"`
+			ShowBeforeMinutes *int32  `json:"show_before_minutes"`
+			Category          *string `json:"category"`
 		} `json:"data"`
 	}
 
@@ -1977,6 +1988,7 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 		Column8:    payload.Data.ShowBeforeMinutes, // show_before_minutes
 		Column9:    nil,                            // notify_offsets_min - will use default '{2880,1440,720,360,180}'
 		Column10:   nil,                            // muted_offsets_min - will use default '{}'
+		Column11:   payload.Data.Category,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create schedule: %v", err)
@@ -1984,16 +1996,12 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 
 	// For immediate reminders, process them right away instead of waiting for cron
 	if payload.Data.Schedule.Instant != nil {
-		// Parse the instant time
-		instantTime, err := time.Parse(time.RFC3339, payload.Data.Schedule.Instant.ISO)
-		if err == nil {
-			// If reminder is due within the next 2 minutes, process it immediately
-			if instantTime.Sub(time.Now()) <= 2*time.Minute {
-				log.Printf("Processing immediate reminder for schedule %s", schedule.ID)
-				// Create occurrence and notification jobs immediately
-				if err := cfg.processImmediateReminder(ctx, schedule, instantTime); err != nil {
-					log.Printf("Failed to process immediate reminder: %v", err)
-				}
+		// If reminder is due within the next 2 minutes, process it immediately
+		if time.Until(schedule.StartLocal) <= 2*time.Minute {
+			log.Printf("Processing immediate reminder for schedule %s", schedule.ID)
+			// Create occurrence and notification jobs immediately
+			if err := cfg.processImmediateReminder(ctx, schedule); err != nil {
+				log.Printf("Failed to process immediate reminder: %v", err)
 			}
 		}
 	}
@@ -2008,11 +2016,24 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 	})
 }
 
-func (cfg *config) processImmediateReminder(ctx context.Context, schedule database.Schedule, instantTime time.Time) error {
+func (cfg *config) processImmediateReminder(ctx context.Context, schedule database.Schedule) error {
+	// Calculate occurrence time matching ScheduleService (nanoseconds = 0)
+	loc, err := time.LoadLocation(schedule.Tz)
+	if err != nil {
+		return fmt.Errorf("failed to load timezone: %v", err)
+	}
+
+	// Match ScheduleService: zero out nanoseconds for consistent occurrence matching
+	occursAt := time.Date(
+		schedule.StartLocal.Year(), schedule.StartLocal.Month(), schedule.StartLocal.Day(),
+		schedule.StartLocal.Hour(), schedule.StartLocal.Minute(), schedule.StartLocal.Second(),
+		0, loc, // nanoseconds explicitly set to 0
+	).UTC()
+
 	// Create occurrence for the immediate reminder
 	occurrence, err := cfg.DB.UpsertOccurrence(ctx, database.UpsertOccurrenceParams{
 		ScheduleID: schedule.ID,
-		OccursAt:   instantTime,
+		OccursAt:   occursAt,
 		Rev:        schedule.Rev,
 	})
 	if err != nil {
@@ -2028,21 +2049,27 @@ func (cfg *config) processImmediateReminder(ctx context.Context, schedule databa
 			if freq == "minutely" || freq == "hourly" {
 				dueAt = sql.NullTime{Valid: false}
 			} else {
-				dueAt = sql.NullTime{Time: instantTime, Valid: true}
+				dueAt = sql.NullTime{Time: occursAt, Valid: true}
 			}
 		} else {
 			// One-off tasks keep their due date
-			dueAt = sql.NullTime{Time: instantTime, Valid: true}
+			dueAt = sql.NullTime{Time: occursAt, Valid: true}
+		}
+
+		// Get category from schedule, default to "Life" if not set
+		category := "Life"
+		if schedule.Category.Valid {
+			category = schedule.Category.String
 		}
 
 		task, err := cfg.DB.CreateTask(ctx, database.CreateTaskParams{
 			ID:                uuid.New(),
 			Title:             schedule.Title,
 			Description:       "", // Could be enhanced later
-			CreatedAt:         instantTime,
+			CreatedAt:         occursAt,
 			CompletedAt:       sql.NullTime{Valid: false},
 			Duration:          "00:00:00",
-			Category:          "Life", // Default category for scheduled tasks
+			Category:          category,
 			Tags:              []string{},
 			ToggledAt:         sql.NullInt64{Valid: false},
 			IsActive:          false,
@@ -2066,7 +2093,11 @@ func (cfg *config) processImmediateReminder(ctx context.Context, schedule databa
 			return fmt.Errorf("failed to link task to occurrence: %v", err)
 		}
 
-		log.Printf("Created immediate task for schedule %s at %v", schedule.ID, instantTime)
+		// Broadcast task creation event to user's connected devices
+		cfg.WSClientManager.BroadcastToSameUser(ctx, "new_task_created", schedule.UserID, task)
+		log.Printf("Broadcasted new_task_created event for task %s to user %s", task.ID, schedule.UserID)
+
+		log.Printf("Created immediate task for schedule %s at %v", schedule.ID, occursAt)
 	}
 
 	// Create notification job for immediate reminder (offset 0)
@@ -2084,13 +2115,13 @@ func (cfg *config) processImmediateReminder(ctx context.Context, schedule databa
 		ScheduleID:    uuid.NullUUID{UUID: schedule.ID, Valid: true},
 		OccurrenceID:  occurrence.ID,
 		OffsetMinutes: 0,
-		PlannedSendAt: instantTime,
+		PlannedSendAt: occursAt,
 		Payload:       payloadJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create notification job: %v", err)
 	}
 
-	log.Printf("Created immediate reminder notification job for schedule %s at %v", schedule.ID, instantTime)
+	log.Printf("Created immediate reminder notification job for schedule %s at %v", schedule.ID, occursAt)
 	return nil
 }

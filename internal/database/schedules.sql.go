@@ -16,9 +16,9 @@ import (
 
 const createSchedule = `-- name: CreateSchedule :one
 INSERT INTO schedules (user_id, kind, title, tz, start_local, rrule, until_local,
-                       show_before_minutes, notify_offsets_min, muted_offsets_min)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), COALESCE($9, '{2880,1440,720,360,180}')::integer[], COALESCE($10, '{}')::integer[])
-RETURNING id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at
+                       show_before_minutes, notify_offsets_min, muted_offsets_min, category)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), COALESCE($9, '{2880,1440,720,360,180}')::integer[], COALESCE($10, '{}')::integer[], COALESCE($11, 'Life'))
+RETURNING id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at, category
 `
 
 type CreateScheduleParams struct {
@@ -32,6 +32,7 @@ type CreateScheduleParams struct {
 	Column8    interface{}    `json:"column_8"`
 	Column9    []int32        `json:"column_9"`
 	Column10   []int32        `json:"column_10"`
+	Column11   interface{}    `json:"column_11"`
 }
 
 func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) (Schedule, error) {
@@ -46,6 +47,7 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		arg.Column8,
 		pq.Array(arg.Column9),
 		pq.Array(arg.Column10),
+		arg.Column11,
 	)
 	var i Schedule
 	err := row.Scan(
@@ -65,6 +67,7 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		&i.LastMaterializedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
@@ -88,7 +91,7 @@ func (q *Queries) DeleteSchedule(ctx context.Context, id uuid.UUID) error {
 }
 
 const getActiveSchedules = `-- name: GetActiveSchedules :many
-SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at FROM schedules WHERE active = TRUE
+SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at, category FROM schedules WHERE active = TRUE
 `
 
 func (q *Queries) GetActiveSchedules(ctx context.Context) ([]Schedule, error) {
@@ -117,6 +120,7 @@ func (q *Queries) GetActiveSchedules(ctx context.Context) ([]Schedule, error) {
 			&i.LastMaterializedUntil,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -132,7 +136,7 @@ func (q *Queries) GetActiveSchedules(ctx context.Context) ([]Schedule, error) {
 }
 
 const getScheduleByID = `-- name: GetScheduleByID :one
-SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at FROM schedules WHERE id = $1
+SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at, category FROM schedules WHERE id = $1
 `
 
 func (q *Queries) GetScheduleByID(ctx context.Context, id uuid.UUID) (Schedule, error) {
@@ -155,12 +159,13 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id uuid.UUID) (Schedule, 
 		&i.LastMaterializedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
 
 const getSchedulesByUser = `-- name: GetSchedulesByUser :many
-SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at FROM schedules WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at, category FROM schedules WHERE user_id = $1 AND active = TRUE ORDER BY created_at DESC
 `
 
 func (q *Queries) GetSchedulesByUser(ctx context.Context, userID uuid.UUID) ([]Schedule, error) {
@@ -189,6 +194,7 @@ func (q *Queries) GetSchedulesByUser(ctx context.Context, userID uuid.UUID) ([]S
 			&i.LastMaterializedUntil,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Category,
 		); err != nil {
 			return nil, err
 		}
@@ -230,9 +236,9 @@ const updateSchedule = `-- name: UpdateSchedule :one
 UPDATE schedules 
 SET title = $2, tz = $3, start_local = $4, rrule = $5, until_local = $6,
     show_before_minutes = $7, notify_offsets_min = $8, muted_offsets_min = $9,
-    updated_at = NOW()
+    category = $10, updated_at = NOW()
 WHERE id = $1
-RETURNING id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at
+RETURNING id, user_id, kind, title, tz, start_local, rrule, until_local, show_before_minutes, notify_offsets_min, muted_offsets_min, active, rev, last_materialized_until, created_at, updated_at, category
 `
 
 type UpdateScheduleParams struct {
@@ -245,6 +251,7 @@ type UpdateScheduleParams struct {
 	ShowBeforeMinutes sql.NullInt32  `json:"show_before_minutes"`
 	NotifyOffsetsMin  []int32        `json:"notify_offsets_min"`
 	MutedOffsetsMin   []int32        `json:"muted_offsets_min"`
+	Category          sql.NullString `json:"category"`
 }
 
 func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) (Schedule, error) {
@@ -258,6 +265,7 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 		arg.ShowBeforeMinutes,
 		pq.Array(arg.NotifyOffsetsMin),
 		pq.Array(arg.MutedOffsetsMin),
+		arg.Category,
 	)
 	var i Schedule
 	err := row.Scan(
@@ -277,6 +285,7 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 		&i.LastMaterializedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }

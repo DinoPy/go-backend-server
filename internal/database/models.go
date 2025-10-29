@@ -68,6 +68,7 @@ type Schedule struct {
 	LastMaterializedUntil sql.NullTime   `json:"last_materialized_until"`
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
+	Category              sql.NullString `json:"category"`
 }
 
 type Task struct {

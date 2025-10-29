@@ -258,6 +258,12 @@ func (s *ScheduleService) ensureTaskForOccurrence(ctx context.Context, sch datab
 		dueAt = sql.NullTime{Time: occ.OccursAt, Valid: true}
 	}
 
+	// Get category from schedule, default to "Life" if not set
+	category := "Life"
+	if sch.Category.Valid {
+		category = sch.Category.String
+	}
+
 	// Create new task
 	task, err := s.queries.CreateTask(ctx, database.CreateTaskParams{
 		ID:                uuid.New(),
@@ -266,7 +272,7 @@ func (s *ScheduleService) ensureTaskForOccurrence(ctx context.Context, sch datab
 		CreatedAt:         occ.OccursAt,
 		CompletedAt:       sql.NullTime{Valid: false},
 		Duration:          "00:00:00",
-		Category:          "Life", // Default category for scheduled tasks
+		Category:          category,
 		Tags:              []string{},
 		ToggledAt:         sql.NullInt64{Valid: false},
 		IsActive:          false,
