@@ -80,7 +80,7 @@ func main() {
 	}
 
 	// Initialize services after config is created
-	scheduleService := NewScheduleService(dbQuery, 60, func(userID uuid.UUID, task database.Task) error {
+	scheduleService := NewScheduleService(dbQuery, 3, func(userID uuid.UUID, task database.Task) error {
 		// Send task creation event via WebSocket to user's connected clients
 		log.Printf("Main: Broadcasting new_task_created event for task %s to user %s", task.ID, userID)
 		cfg.WSClientManager.BroadcastToSameUser(context.Background(), "new_task_created", userID, task)
