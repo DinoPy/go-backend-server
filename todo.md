@@ -5,13 +5,18 @@
 [] Maybe add a notification icon on the task bar that will receive all notifications the phone would normally receive.
 [] Add a pop-up add window on the desktop app so it is easier to set all properities from the start.
 [] Make the hidden due tasks that are shown through the toggle show last or something, they are too random right now.
+[] Update the size and format of edit task window.
+[] Check why editing the task from completed list won't display the description.
+[] Check why editing the task won't save the description.
+[] Fix tasks that are edited and a due date is assigned.
+[] Consider adjusting the notifications to show your task.. or reminder... and then other parameters instead of duplicate data in title and body.
 
-[] The current show/hide method of tasks that are due takes the indexes out as well, we will end up with task 50 while 1 to 49 are hidden. Either accept this fact or think of a fix.
-[] Add task duplicate, should be simple.
-[] In completed tasks maybe add a split for days such as a title (the day) the continuation of the tasks and a bar at the bottom (not necessarely). It will be easier to see. 
-    [] Also adjust the ordering, they should show from first in a day to last. 
-    [] When selecting an interval, the tasks should show old (top) to newest (bottom) or add an ordering button. Maybe consider sorting?
-    [] Editing current completed tasks, or tasks that don't have a due date show the current day as a default, instead of dashes as a sign of not having a value assigned to due_at propertiy.
+[x] The current show/hide method of tasks that are due takes the indexes out as well, we will end up with task 50 while 1 to 49 are hidden. Either accept this fact or think of a fix.
+[x] Add task duplicate, should be simple.
+[x] In completed tasks maybe add a split for days such as a title (the day) the continuation of the tasks and a bar at the bottom (not necessarely). It will be easier to see. 
+    [x] Also adjust the ordering, they should show from first in a day to last. 
+    [x] When selecting an interval, the tasks should show old (top) to newest (bottom) or add an ordering button. Maybe consider sorting?
+    [x] Editing current completed tasks, or tasks that don't have a due date show the current day as a default, instead of dashes as a sign of not having a value assigned to due_at propertiy.
 []  Create an export feature, that will convert the completed list in a list of item that are by default toggled, I can then choose what items to export.
 
 
