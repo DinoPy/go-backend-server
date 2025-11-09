@@ -249,14 +249,7 @@ func (s *ScheduleService) ensureTaskForOccurrence(ctx context.Context, sch datab
 	}
 
 	// Determine if this should have a due date
-	var dueAt sql.NullTime
-	if isHighFrequency(sch) {
-		// High-frequency tasks (minutely/hourly) have no due date
-		dueAt = sql.NullTime{Valid: false}
-	} else {
-		// Normal tasks have due date set to occurrence time
-		dueAt = sql.NullTime{Time: occ.OccursAt, Valid: true}
-	}
+	dueAt := calculateTaskDueDate(sch, occ.OccursAt)
 
 	// Get category from schedule, default to "Life" if not set
 	category := "Life"
@@ -543,4 +536,35 @@ func (s *ScheduleService) nextAfterLocal(set *rrule.Set, start time.Time, loc *t
 	}
 
 	return time.Time{}
+}
+
+const instantTaskDueWindow = 48 * time.Hour
+
+func calculateTaskDueDate(sch database.Schedule, occursAt time.Time) sql.NullTime {
+	if isHighFrequency(sch) {
+		return sql.NullTime{Valid: false}
+	}
+	if !sch.Rrule.Valid && shouldSkipDueDateForInstantTask(occursAt) {
+		return sql.NullTime{Valid: false}
+	}
+
+	return sql.NullTime{Time: occursAt, Valid: true}
+}
+
+func shouldSkipDueDateForInstantTask(occursAt time.Time) bool {
+	durationUntil := occursAt.Sub(time.Now())
+	return durationUntil >= 0 && durationUntil <= instantTaskDueWindow
+}
+
+func occurrenceUTCFromSchedule(schedule database.Schedule) (time.Time, error) {
+	loc, err := time.LoadLocation(schedule.Tz)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Date(
+		schedule.StartLocal.Year(), schedule.StartLocal.Month(), schedule.StartLocal.Day(),
+		schedule.StartLocal.Hour(), schedule.StartLocal.Minute(), schedule.StartLocal.Second(),
+		0, loc,
+	).UTC(), nil
 }

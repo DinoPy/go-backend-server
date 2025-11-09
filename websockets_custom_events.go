@@ -1994,14 +1994,18 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 		return fmt.Errorf("failed to create schedule: %v", err)
 	}
 
-	// For immediate reminders, process them right away instead of waiting for cron
+	// For immediate reminders shown to the user right now, process them
 	if payload.Data.Schedule.Instant != nil {
-		// If reminder is due within the next 2 minutes, process it immediately
-		if time.Until(schedule.StartLocal) <= 2*time.Minute {
-			log.Printf("Processing immediate reminder for schedule %s", schedule.ID)
-			// Create occurrence and notification jobs immediately
-			if err := cfg.processImmediateReminder(ctx, schedule); err != nil {
-				log.Printf("Failed to process immediate reminder: %v", err)
+		occursAt, err := occurrenceUTCFromSchedule(schedule)
+		if err != nil {
+			log.Printf("Failed to build occurrence time for schedule %s: %v", schedule.ID, err)
+		} else {
+			timeUntil := time.Until(occursAt)
+			if timeUntil <= 2*time.Minute && timeUntil >= -2*time.Minute {
+				log.Printf("Processing immediate reminder for schedule %s", schedule.ID)
+				if err := cfg.processImmediateReminder(ctx, schedule, occursAt); err != nil {
+					log.Printf("Failed to process immediate reminder: %v", err)
+				}
 			}
 		}
 	}
@@ -2016,21 +2020,7 @@ func (cfg *config) WSOnReminderSubmit(ctx context.Context, c *websocket.Conn, SI
 	})
 }
 
-func (cfg *config) processImmediateReminder(ctx context.Context, schedule database.Schedule) error {
-	// Calculate occurrence time matching ScheduleService (nanoseconds = 0)
-	loc, err := time.LoadLocation(schedule.Tz)
-	if err != nil {
-		return fmt.Errorf("failed to load timezone: %v", err)
-	}
-
-	// Match ScheduleService: zero out nanoseconds for consistent occurrence matching
-	occursAt := time.Date(
-		schedule.StartLocal.Year(), schedule.StartLocal.Month(), schedule.StartLocal.Day(),
-		schedule.StartLocal.Hour(), schedule.StartLocal.Minute(), schedule.StartLocal.Second(),
-		0, loc, // nanoseconds explicitly set to 0
-	).UTC()
-
-	// Create occurrence for the immediate reminder
+func (cfg *config) processImmediateReminder(ctx context.Context, schedule database.Schedule, occursAt time.Time) error {
 	occurrence, err := cfg.DB.UpsertOccurrence(ctx, database.UpsertOccurrenceParams{
 		ScheduleID: schedule.ID,
 		OccursAt:   occursAt,
@@ -2042,19 +2032,7 @@ func (cfg *config) processImmediateReminder(ctx context.Context, schedule databa
 
 	// Create task if kind is 'task'
 	if schedule.Kind == "task" {
-		// Determine if this should have a due date based on schedule frequency
-		var dueAt sql.NullTime
-		if schedule.Rrule.Valid {
-			freq := detectFrequency(schedule.Rrule.String)
-			if freq == "minutely" || freq == "hourly" {
-				dueAt = sql.NullTime{Valid: false}
-			} else {
-				dueAt = sql.NullTime{Time: occursAt, Valid: true}
-			}
-		} else {
-			// One-off tasks keep their due date
-			dueAt = sql.NullTime{Time: occursAt, Valid: true}
-		}
+		dueAt := calculateTaskDueDate(schedule, occursAt)
 
 		// Get category from schedule, default to "Life" if not set
 		category := "Life"
